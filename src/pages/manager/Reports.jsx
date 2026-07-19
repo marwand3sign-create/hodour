@@ -22,6 +22,7 @@ export default function Reports() {
   const [dept, setDept] = useState('all')
   const [employees, setEmployees] = useState([])
   const [records, setRecords] = useState([])
+  const [deptList, setDeptList] = useState([])
   const [company, setCompany] = useState({ name: '' })
   const [shift, setShift] = useState(DEFAULT_SHIFT)
   const [loading, setLoading] = useState(true)
@@ -30,13 +31,15 @@ export default function Reports() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [emps, recs, comp, sh] = await Promise.all([
+      const [emps, recs, comp, sh, depts] = await Promise.all([
         db.selectShared('employees', {}, { limit: 500 }),
         db.selectAllShared('attendance', { date: { between: [start, end] } }, { max: 20000 }),
         db.selectShared('settings', { key: 'company' }, { limit: 1 }),
         db.selectShared('settings', { key: 'shift' }, { limit: 1 }),
+        db.selectShared('departments', {}, { limit: 200 }),
       ])
       setEmployees(emps); setRecords(recs)
+      setDeptList((depts || []).map(d => d.name).filter(Boolean))
       if (comp[0]) setCompany({ name: comp[0].name || '' })
       if (sh[0]) setShift({ ...DEFAULT_SHIFT, ...sh[0] })
     } catch (e) { /* noop */ }
@@ -73,10 +76,14 @@ export default function Reports() {
     }).sort((a, b) => b.wage - a.wage)
   }, [records, wageByUser, shift])
 
+  // The dropdown must list every configured department (Setup.jsx), not just
+  // ones with completed attendance in the currently selected date range —
+  // otherwise picking a wider range that happens to have zero records left
+  // the filter with nothing to choose but "كل الأقسام".
   const departments = useMemo(() => {
-    const set = new Set(flatRows.map(r => r.department))
+    const set = new Set([...deptList, ...flatRows.map(r => r.department)])
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'))
-  }, [flatRows])
+  }, [deptList, flatRows])
 
   // Grouped by department (used for both the "all" view and export)
   const groups = useMemo(() => {
