@@ -5,6 +5,7 @@ import { auth } from '../lib/auth'
 import { team } from '../lib/team'
 import { EMBLEM } from '../store'
 import RosterAdmin from './RosterAdmin'
+import NotificationBell from './NotificationBell'
 import Dashboard from '../pages/manager/Dashboard'
 import Attendance from '../pages/manager/Attendance'
 import Staff from '../pages/manager/Staff'
@@ -47,10 +48,11 @@ export default function ManagerShell() {
       <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-white/10 p-5 pt-[calc(env(safe-area-inset-top,0px)+1.25rem)]">
         <div className="flex items-center gap-3 mb-8">
           <img src={EMBLEM} alt="" className="w-10 h-10" />
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="font-display text-xl font-bold text-cyan-300 leading-none">Hudour</div>
             <div className="text-[10px] text-white/40 mt-1">مدير</div>
           </div>
+          <NotificationBell />
         </div>
         <nav className="flex flex-col gap-1">
           {TABS.map(({ to, label, icon: Icon }) => (
@@ -80,6 +82,7 @@ export default function ManagerShell() {
           <span className="font-display text-lg font-bold text-cyan-300">Hudour</span>
         </div>
         <div className="flex items-center gap-3">
+          <NotificationBell />
           {canManage && <button onClick={openRoster} className="text-cyan-300"><UserPlus size={20} /></button>}
           <button onClick={() => auth.signOut()} className="text-white/50"><LogOut size={20} /></button>
         </div>
