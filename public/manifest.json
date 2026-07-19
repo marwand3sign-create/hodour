@@ -1,0 +1,21 @@
+{
+  "name": "Hudour",
+  "short_name": "Hudour",
+  "description": "حضور وانصراف بالتعرف على الوجه والموقع",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#22d3ee",
+  "icons": [
+    {
+      "src": "https://api.whacka.app/storage/v1/object/public/app-images/5682ec9c-0981-4d03-8703-288cf27f4803/d2adf5a0-4856-46e9-aec2-9be6eff30a9d.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://api.whacka.app/storage/v1/object/public/app-images/5682ec9c-0981-4d03-8703-288cf27f4803/d2adf5a0-4856-46e9-aec2-9be6eff30a9d.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
