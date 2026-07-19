@@ -21,6 +21,8 @@ const TABLE = {
   notifications: 'notifications',
 }
 
+let channelSeq = 0
+
 const camelToSnake = (s) => s.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase())
 const snakeToCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
 const toCamel = (obj) => {
@@ -54,8 +56,13 @@ export function useLiveShared(collection, opts = {}) {
     }
 
     load()
+    // Channel name must be unique per subscriber — Supabase reuses a channel
+    // by name, so two components subscribing to the same table at once (e.g.
+    // Dashboard + NotificationBell both watching 'notifications') would both
+    // grab the same already-subscribed channel and the second .on(...) call
+    // throws ("cannot add postgres_changes callbacks... after subscribe()").
     const channel = supabase
-      .channel(`live:${table}`)
+      .channel(`live:${table}:${++channelSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table }, load)
       .subscribe()
 
