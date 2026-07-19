@@ -127,4 +127,19 @@ export default defineConfig({
       '@supabase/supabase-js',
     ],
   },
+  // Purely a bundler-grouping change (which output file each library's code
+  // lands in) — doesn't change what loads or when, so it can't alter app
+  // behavior. Splits the handful of large, rarely-co-loaded libraries out of
+  // the single main chunk so the browser can cache each independently and
+  // doesn't have to re-download all of them together on the next deploy.
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          leaflet: ['leaflet', 'react-leaflet'],
+          'docs-export': ['jspdf', 'html2canvas', 'exceljs'],
+        },
+      },
+    },
+  },
 })
