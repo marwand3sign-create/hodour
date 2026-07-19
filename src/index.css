@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700&family=Orbitron:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  overscroll-behavior: none;
+  direction: rtl;
+}
+
+:root {
+  --color-bg: 7 12 24;            /* deep navy */
+  --color-primary: 56 189 248;    /* cyan-400 */
+  --color-secondary: 52 211 153;  /* emerald-400 */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+body {
+  font-family: 'Tajawal', system-ui, sans-serif;
+}
+
+.font-display { font-family: 'Cairo', system-ui, sans-serif; }
+.font-clock { font-family: 'Orbitron', system-ui, sans-serif; }
+
+::-webkit-scrollbar { display: none; }
+html { scrollbar-width: none; }
+
+/* Ambient glow backdrop reused across screens */
+.cn-aurora {
+  background:
+    radial-gradient(60% 45% at 20% 0%, rgba(56,189,248,0.16), transparent 70%),
+    radial-gradient(55% 40% at 90% 15%, rgba(52,211,153,0.12), transparent 70%),
+    radial-gradient(70% 50% at 50% 110%, rgba(250,204,21,0.07), transparent 70%),
+    rgb(var(--color-bg));
+}
+
+.cn-glass {
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(255,255,255,0.09);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes cn-spin { to { transform: rotate(360deg); } }
+@keyframes cn-breathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0px rgba(56,189,248,0)); opacity: 0.85; }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 22px rgba(56,189,248,0.55)); opacity: 1; }
+}
+@keyframes cn-glow-ring {
+  0% { box-shadow: 0 0 0 0 rgba(56,189,248,0.35); opacity: 1; }
+  100% { box-shadow: 0 0 0 26px rgba(56,189,248,0); opacity: 0; }
+}
+.cn-logo-breathe { animation: cn-breathe 2.6s ease-in-out infinite; }
+@keyframes cn-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
+  70% { box-shadow: 0 0 0 18px rgba(52,211,153,0); }
+  100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+}
+@keyframes cn-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.cn-rise { animation: cn-rise 0.5s ease both; }

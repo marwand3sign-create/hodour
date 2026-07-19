@@ -1,0 +1,149 @@
+import { useEffect, useMemo, useState } from 'react'
+import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert } from 'lucide-react'
+import { useLiveShared } from '../../lib/useLive'
+import { db } from '../../lib/db'
+import { todayStr, fmtTime } from '../../store'
+
+export default function Attendance() {
+  const [date, setDate] = useState(todayStr())
+  const [viewing, setViewing] = useState(null)
+  const [employees, setEmployees] = useState({})
+  const { data, loading } = useLiveShared('attendance', { order: '-createdAt', limit: 800 })
+  const { data: empData } = useLiveShared('employees', { limit: 500 })
+
+  useEffect(() => {
+    const map = {}
+    ;(empData || []).forEach(e => { map[e.userId] = e })
+    setEmployees(map)
+  }, [empData])
+
+  const rows = useMemo(() => (data || []).filter(r => r.date === date && r.status !== 'flag-only'), [data, date])
+
+  async function remove(r) {
+    if (!confirm(`حذف سجل ${r.employeeName}؟`)) return
+    try { await db.deleteShared('attendance', r.id) } catch (e) { alert('تعذر الحذف: ' + (e.message || e)) }
+  }
+
+  return (
+    <div className="space-y-5 cn-rise">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold text-white">الحضور</h1>
+        <div className="flex items-center gap-2 cn-glass rounded-xl px-3 py-2">
+          <CalendarDays size={16} className="text-cyan-300" />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="bg-transparent text-sm text-white outline-none [color-scheme:dark]" />
+        </div>
+      </div>
+
+      <div className="flex gap-3 text-sm">
+        <span className="text-white/50">{rows.length} سجل</span>
+        <span className="text-emerald-400">{rows.filter(r => r.status === 'in').length} نشط</span>
+      </div>
+
+      {loading ? (
+        <div className="text-center text-white/40 py-10">جارٍ التحميل…</div>
+      ) : rows.length === 0 ? (
+        <div className="cn-glass rounded-2xl p-8 text-center text-white/50">لا توجد سجلات في هذا التاريخ.</div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {rows.map(r => (
+            <div key={r.id} className="cn-glass rounded-2xl p-4 flex items-center gap-3">
+              <FaceAvatar r={r} onOpen={() => (r.faceSnapshot || r.outFaceSnapshot) && setViewing(r)} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{r.employeeName}</div>
+                <div className="text-xs text-white/45 flex items-center gap-1 truncate">
+                  <MapPin size={12} /> {r.locationName || '—'}
+                  {r.faceVerified && <ScanFace size={12} className="text-emerald-400 ml-1" />}
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {Number(r.lateMinutes) > 0 && (
+                    <span className="text-[10px] font-semibold text-amber-300 bg-amber-400/15 rounded px-1.5 py-0.5">متأخر {Number(r.lateMinutes)} د</span>
+                  )}
+                  {r.gpsSuspicious && (
+                    <span title={r.gpsFlagReason || ''} className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-300 bg-red-400/15 rounded px-1.5 py-0.5">
+                      <ShieldAlert size={10} /> موقع مشتبه به
+                    </span>
+                  )}
+                  {(r.faceMismatch || r.outFaceMismatch) && (
+                    <span title="الوجه المُلتقط لا يتطابق بثقة كافية مع الصورة المرجعية — راجع الصور يدويًا" className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 bg-amber-400/15 rounded px-1.5 py-0.5">
+                      <ScanFace size={10} /> وجه غير مطابق
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-white/70 tabular-nums">{fmtTime(r.checkIn)} ← {r.checkOut ? fmtTime(r.checkOut) : <span className="text-emerald-400">نشط</span>}</div>
+                {r.checkOut && (
+                  <div className="text-xs text-white/50 tabular-nums">
+                    {Number(r.workedHours).toFixed(1)} س{Number(r.overtimeHours) > 0 ? ` · +${Number(r.overtimeHours).toFixed(1)} إضافي` : ''}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => remove(r)} className="text-white/25 hover:text-red-400 shrink-0 p-1"><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {viewing && <FaceModal r={viewing} refPhoto={employees[viewing.employeeUserId]?.referencePhoto} onClose={() => setViewing(null)} />}
+    </div>
+  )
+}
+
+function FaceAvatar({ r, onOpen }) {
+  const [err, setErr] = useState(false)
+  const src = r.faceSnapshot || r.outFaceSnapshot
+  if (src && !err) {
+    return (
+      <button onClick={onOpen} className="w-11 h-11 rounded-full overflow-hidden shrink-0 ring-1 ring-cyan-400/30 active:scale-95 transition">
+        <img src={src} alt={r.employeeName} onError={() => setErr(true)} className="w-full h-full object-cover" />
+      </button>
+    )
+  }
+  return (
+    <div className="w-11 h-11 rounded-full bg-cyan-400/15 flex items-center justify-center shrink-0">
+      <span className="font-display font-bold text-cyan-300">{(r.employeeName || '?').charAt(0).toUpperCase()}</span>
+    </div>
+  )
+}
+
+function FaceModal({ r, refPhoto, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center p-6" style={{ height: 'var(--visual-height, 100dvh)' }} onClick={onClose}>
+      <div className="w-full max-w-sm cn-aurora border border-white/10 rounded-3xl p-5 overflow-y-auto" style={{ maxHeight: 'calc(var(--visual-height, 100dvh) - 4rem)' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-lg font-bold text-white">{r.employeeName}</h2>
+            <p className="text-xs text-white/45">قارن الصور يدويًا للتأكد من الهوية</p>
+          </div>
+          <button onClick={onClose} className="text-white/50"><X size={20} /></button>
+        </div>
+        <div className={`grid ${refPhoto ? 'grid-cols-3' : 'grid-cols-2'} gap-2.5`}>
+          {refPhoto && <FacePane label="المرجعية" src={refPhoto} accent />}
+          <FacePane label={`دخول · ${fmtTime(r.checkIn)}`} src={r.faceSnapshot} score={r.faceMatchScore} mismatch={r.faceMismatch} />
+          <FacePane label={r.checkOut ? `خروج · ${fmtTime(r.checkOut)}` : 'خروج · —'} src={r.outFaceSnapshot} score={r.outFaceMatchScore} mismatch={r.outFaceMismatch} />
+        </div>
+        {refPhoto && <p className="text-[11px] text-white/35 mt-3 text-center">قارن صورة المرجع مع صور التسجيل للتأكد أنهما الشخص ذاته — نسبة التطابق تلقائية وتقريبية، والتأكيد النهائي بعين المدير.</p>}
+      </div>
+    </div>
+  )
+}
+
+function FacePane({ label, src, accent, score, mismatch }) {
+  const [err, setErr] = useState(false)
+  return (
+    <div>
+      <div className={`rounded-2xl overflow-hidden bg-white/5 aspect-square flex items-center justify-center ${accent ? 'ring-2 ring-amber-400/50' : mismatch ? 'ring-2 ring-red-400/50' : ''}`}>
+        {src && !err
+          ? <img src={src} alt={label} onError={() => setErr(true)} className="w-full h-full object-cover" />
+          : <ScanFace size={28} className="text-white/25" />}
+      </div>
+      <div className={`text-[11px] text-center mt-1.5 ${accent ? 'text-amber-300' : 'text-white/50'}`}>{label}</div>
+      {score != null && (
+        <div className={`text-[10px] text-center tabular-nums ${mismatch ? 'text-red-300' : 'text-emerald-400/70'}`}>
+          تطابق {Math.round(score * 100)}٪
+        </div>
+      )}
+    </div>
+  )
+}
