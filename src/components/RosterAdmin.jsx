@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { X, UserPlus, KeyRound, UserX, UserCheck, Copy, Check, Loader2, ShieldCheck } from 'lucide-react'
+import { X, UserPlus, KeyRound, UserX, UserCheck, Copy, Check, Loader2, ShieldCheck, Pencil } from 'lucide-react'
 import { team } from '../lib/team'
 import { db } from '../lib/db'
 import { ROLES, groupId } from '../store'
@@ -136,6 +136,8 @@ function MemberRow({ member, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [tempPin, setTempPin] = useState(null)
+  const [customPinOpen, setCustomPinOpen] = useState(false)
+  const [customPin, setCustomPin] = useState('')
   const disabled = member.status === 'disabled'
   const name = member.displayName || member.handle
 
@@ -144,6 +146,15 @@ function MemberRow({ member, onChanged }) {
     try { await fn(); onChanged?.() }
     catch (e) { setMsg(e?.message || 'فشل الإجراء') }
     setBusy(false)
+  }
+
+  async function setCustomPinNow() {
+    if (!/^\d{6}$/.test(customPin)) { setMsg('الرقم السري يجب أن يكون 6 أرقام'); return }
+    await run(async () => {
+      const { tempPassword } = await team.resetPassword(member.userId, customPin)
+      if (tempPassword) setTempPin(tempPassword)
+    })
+    setCustomPinOpen(false); setCustomPin('')
   }
 
   return (
@@ -162,10 +173,15 @@ function MemberRow({ member, onChanged }) {
             {disabled && <span className="ms-1 text-red-300">(موقوف)</span>}
           </div>
         </div>
-        <button title="إعادة تعيين الرقم السري" disabled={busy}
+        <button title="رقم سري عشوائي جديد" disabled={busy}
           onClick={() => run(async () => { const { tempPassword } = await team.resetPassword(member.userId); if (tempPassword) setTempPin(tempPassword) })}
           className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-white/50 hover:text-cyan-300 disabled:opacity-50">
           <KeyRound size={16} />
+        </button>
+        <button title="تعيين رقم سري مخصص" disabled={busy}
+          onClick={() => setCustomPinOpen(o => !o)}
+          className={`w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-50 ${customPinOpen ? 'bg-cyan-400/15 text-cyan-300' : 'bg-white/5 text-white/50 hover:text-cyan-300'}`}>
+          <Pencil size={15} />
         </button>
         {disabled ? (
           <button title="إعادة تفعيل" disabled={busy} onClick={() => run(() => team.enableMember(member.userId))}
@@ -179,6 +195,17 @@ function MemberRow({ member, onChanged }) {
           </button>
         )}
       </div>
+      {customPinOpen && (
+        <div className="mt-2 flex items-center gap-2" dir="ltr">
+          <input value={customPin} onChange={e => setCustomPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="123456" maxLength={6} inputMode="numeric"
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-cyan-400/50" />
+          <button disabled={busy || customPin.length !== 6} onClick={setCustomPinNow}
+            className="px-3 py-2 rounded-xl bg-cyan-400 text-black text-xs font-semibold disabled:opacity-40" dir="rtl">
+            {busy ? <Loader2 className="animate-spin" size={14} /> : 'تعيين'}
+          </button>
+        </div>
+      )}
       {tempPin && (
         <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/5 p-2 ps-3" dir="ltr">
           <span className="text-xs text-white/50">الرقم السري الجديد:</span>

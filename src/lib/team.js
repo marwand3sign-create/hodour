@@ -75,8 +75,8 @@ export const team = {
     return callTeamAdmin('create', { handle, displayName, role, password })
   },
 
-  resetPassword: async (userId) => {
-    return callTeamAdmin('resetPassword', { userId })
+  resetPassword: async (userId, password) => {
+    return callTeamAdmin('resetPassword', { userId, password })
   },
 
   enableMember: (userId) => callTeamAdmin('enable', { userId }),

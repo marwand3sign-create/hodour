@@ -130,9 +130,10 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'resetPassword') {
-      const { userId } = body
+      const { userId, password } = body
       try { await assertCanTarget(userId) } catch (e) { return json({ error: (e as Error).message }, 403) }
-      const pin = randomPin()
+      if (password && !/^\d{6}$/.test(String(password))) return json({ error: 'الرقم السري يجب أن يكون 6 أرقام' }, 400)
+      const pin = password || randomPin()
       const { error } = await admin.auth.admin.updateUserById(userId, { password: pin })
       if (error) return json({ error: error.message }, 400)
       return json({ tempPassword: pin })
