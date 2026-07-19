@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { UserPlus, Pencil, X, Loader2, ShieldCheck, ScanFace, Ban, Trash2, RotateCcw, ChevronDown } from 'lucide-react'
+import { UserPlus, Pencil, X, Loader2, ShieldCheck, ScanFace, Ban, Trash2, RotateCcw, ChevronDown, Search } from 'lucide-react'
 import { team } from '../../lib/team'
 import { db } from '../../lib/db'
 import { groupId, money } from '../../store'
@@ -14,6 +14,7 @@ export default function Staff({ openRoster, canManage }) {
   const [busyId, setBusyId] = useState('')
   const [showSuspended, setShowSuspended] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
+  const [query, setQuery] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -39,6 +40,15 @@ export default function Staff({ openRoster, canManage }) {
   const activeMembers = members.filter(m => m.status !== 'disabled' && !deletedIds.has(m.userId))
   const suspendedMembers = members.filter(m => m.status === 'disabled' && !deletedIds.has(m.userId))
   const deletedMembers = members.filter(m => deletedIds.has(m.userId))
+
+  const q = query.trim().toLowerCase()
+  const visibleActiveMembers = q
+    ? activeMembers.filter(m => {
+        const p = profiles[m.userId] || {}
+        const haystack = [p.fullName, m.displayName, m.handle, p.department, p.jobTitle].filter(Boolean).join(' ').toLowerCase()
+        return haystack.includes(q)
+      })
+    : activeMembers
 
   async function suspendMember(m, name) {
     if (!window.confirm(`إيقاف حساب ${name} مؤقتًا؟ لن يستطيع تسجيل الدخول حتى تُعيد تفعيله، وتبقى بياناته كما هي.`)) return
@@ -83,6 +93,18 @@ export default function Staff({ openRoster, canManage }) {
 
       <p className="text-white/45 text-sm">أنشئ حسابات الموظفين من «إضافة حساب»، ثم املأ وظيفة وقسم وراتب كل شخص هنا.</p>
 
+      {members.length > 0 && (
+        <div className="relative">
+          <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/35" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="ابحث بالاسم أو القسم أو الوظيفة…"
+            className="w-full bg-white/5 border border-white/10 rounded-xl pr-10 pl-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50"
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center text-white/40 py-10">جارٍ التحميل…</div>
       ) : members.length === 0 ? (
@@ -93,9 +115,13 @@ export default function Staff({ openRoster, canManage }) {
         <div className="cn-glass rounded-2xl p-8 text-center text-white/50">
           لا يوجد موظفون نشطون حاليًا.
         </div>
+      ) : visibleActiveMembers.length === 0 ? (
+        <div className="cn-glass rounded-2xl p-8 text-center text-white/50">
+          لا نتائج تطابق بحثك.
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {activeMembers.map(m => {
+          {visibleActiveMembers.map(m => {
             const p = profiles[m.userId] || {}
             const name = p.fullName || m.displayName || m.handle
             const busy = busyId === m.userId

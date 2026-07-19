@@ -69,10 +69,10 @@ export default function Setup({ openRoster }) {
   return (
     <div className="space-y-5 cn-rise">
       <h1 className="font-display text-2xl font-bold text-white">الإعدادات</h1>
-      <div className="flex gap-2 cn-glass rounded-xl p-1 overflow-x-auto">
+      <div className="flex gap-2 cn-glass rounded-xl p-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {SECTIONS.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setSection(key)}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${section === key ? 'bg-cyan-400 text-black' : 'text-white/55'}`}>
+            className={`shrink-0 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${section === key ? 'bg-cyan-400 text-black' : 'text-white/55'}`}>
             <Icon size={14} /> <span>{label}</span>
           </button>
         ))}
