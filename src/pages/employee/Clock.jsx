@@ -6,12 +6,13 @@ import { auth } from '../../lib/auth'
 import { storage } from '../../lib/storage'
 import { face, cosineSimilarity, FACE_MATCH_THRESHOLD } from '../../lib/face'
 import { offlineQueue } from '../../lib/offlineQueue'
-import { groupId, todayStr, fmtTime, fmtDateLong, fmtClock, hoursBetween, distanceMeters, DEFAULT_SHIFT, shiftHours, lateMinutes, detectGpsAnomalies, GPS_FLAG_LABELS } from '../../store'
+import { groupId, todayStr, fmtTime, fmtDateLong, fmtClock, hoursBetween, distanceMeters, DEFAULT_SHIFT, shiftHours, lateMinutes, resolveShift, detectGpsAnomalies, GPS_FLAG_LABELS } from '../../store'
 
 export default function ClockPage() {
   const me = auth.getCurrentUser()
   const [profile, setProfile] = useState(null)
   const [shift, setShift] = useState(DEFAULT_SHIFT)
+  const [departments, setDepartments] = useState([])
   const [locations, setLocations] = useState([])
   const [openRec, setOpenRec] = useState(null)
   const [today, setToday] = useState([])
@@ -109,13 +110,14 @@ export default function ClockPage() {
   async function load() {
     setLoading(true)
     try {
-      const [profs, locs, recs, openRecs, settings, mineRecent] = await Promise.all([
+      const [profs, locs, recs, openRecs, settings, mineRecent, depts] = await Promise.all([
         db.selectShared('employees', {}, { limit: 5 }),
         db.selectShared('locations', {}, { limit: 100 }),
         db.selectShared('attendance', { date: todayStr() }, { order: '-createdAt', limit: 20 }),
         db.selectShared('attendance', { status: 'in' }, { order: '-createdAt', limit: 20 }),
         db.selectShared('settings', { key: 'shift' }, { limit: 1 }),
         db.selectShared('attendance', { employeeUserId: me.id }, { order: '-createdAt', limit: 5 }),
+        db.selectShared('departments', {}, { limit: 200 }),
       ])
       setProfile(profs[0] || null)
       // Most recent known GPS fix for this employee (for teleport/impossible-speed checks)
@@ -128,6 +130,7 @@ export default function ClockPage() {
         })
       }
       if (settings && settings[0]) setShift({ ...DEFAULT_SHIFT, ...settings[0] })
+      setDepartments(depts || [])
       setLocations(locs)
       const mine = recs.filter(r => r.employeeUserId === me.id)
       setToday(mine)
@@ -210,6 +213,11 @@ export default function ClockPage() {
     }
   }
 
+  // A department can run its own shift hours (e.g. 6am-2pm vs 6am-5pm) — see
+  // Setup.jsx's per-department shift editor. Falls back to the company-wide
+  // shift when this employee's department has no override.
+  const effectiveShift = resolveShift(profile?.department, departments, shift)
+
   const geoOk = geo.status === 'ok'
   const canAct = faceOk && geoOk && !busy && !geo.blocked
 
@@ -219,7 +227,7 @@ export default function ClockPage() {
     try {
       const { blob, embedding } = await captureFaceBlob()
       const checkInIso = new Date().toISOString()
-      const late = lateMinutes(checkInIso, shift)
+      const late = lateMinutes(checkInIso, effectiveShift)
       // Compare against the employee's stored reference embedding, if any
       // (see FACE_MATCH_THRESHOLD in lib/face.js for why this flags rather
       // than blocks).
@@ -281,7 +289,7 @@ export default function ClockPage() {
       const { blob, embedding } = await captureFaceBlob()
       const out = new Date().toISOString()
       const worked = hoursBetween(target.checkIn, out)
-      const overtime = Math.max(0, worked - shiftHours(shift))
+      const overtime = Math.max(0, worked - shiftHours(effectiveShift))
       // Same field (gpsSuspicious) is reused on checkout — reported as an UPDATE
       // rising-edge so the manager still gets notified even if check-in looked clean.
       const outSuspicious = !!geo.suspicious
@@ -343,7 +351,7 @@ export default function ClockPage() {
           مرحبًا <span className="text-white font-semibold">{profile?.fullName || me?.displayName || 'بك'}</span>
           {profile?.jobTitle ? ` · ${profile.jobTitle}` : ''}
         </div>
-        <div className="mt-1.5 text-xs text-white/40">الدوام الرسمي: {fmtClock(shift.startTime)} — {fmtClock(shift.endTime)}</div>
+        <div className="mt-1.5 text-xs text-white/40">الدوام الرسمي: {fmtClock(effectiveShift.startTime)} — {fmtClock(effectiveShift.endTime)}</div>
       </div>
 
       {pendingQueue.length > 0 && (

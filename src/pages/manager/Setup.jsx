@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Building2, Briefcase, MapPin, Plus, Trash2, Crosshair, Loader2, Check, X, AlertCircle, Clock, Image as ImageIcon, KeyRound, ShieldCheck, UserCog, DatabaseBackup, Download, Upload, AlertTriangle } from 'lucide-react'
+import { Building2, Briefcase, MapPin, Plus, Trash2, Crosshair, Loader2, Check, X, AlertCircle, Clock, Image as ImageIcon, KeyRound, ShieldCheck, UserCog, DatabaseBackup, Download, Upload, AlertTriangle, ChevronDown } from 'lucide-react'
 import MapView from '../../components/MapView'
 import { db } from '../../lib/db'
 import { maps } from '../../lib/maps'
@@ -79,7 +79,7 @@ export default function Setup({ openRoster }) {
       </div>
       {section === 'company' && <CompanySettings onToast={setToast} />}
       {section === 'shift' && <ShiftSettings onToast={setToast} />}
-      {section === 'departments' && <NameList collection="departments" placeholder="مثال: المبيعات، العمليات" label="قسم" onToast={setToast} />}
+      {section === 'departments' && <DepartmentsList onToast={setToast} />}
       {section === 'jobTitles' && <NameList collection="jobTitles" placeholder="مثال: أمين صندوق، سائق، ممرض" label="وظيفة" onToast={setToast} />}
       {section === 'locations' && <Locations onToast={setToast} />}
       {section === 'backup' && <BackupSettings onToast={setToast} />}
@@ -569,6 +569,159 @@ function NameList({ collection, placeholder, label, onToast }) {
         )}
       <ConfirmDialog open={confirmId != null} text={'حذف هذا الـ' + label + '؟'}
         onConfirm={() => doRemove(confirmId)} onCancel={() => setConfirmId(null)} />
+    </div>
+  )
+}
+
+function DepartmentsList({ onToast }) {
+  const [items, setItems] = useState([])
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [confirmId, setConfirmId] = useState(null)
+  const [openId, setOpenId] = useState(null) // expanded shift editor
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setItems(await db.selectShared('departments', {}, { order: '-createdAt', limit: 300 })) } catch {}
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function add() {
+    const n = name.trim()
+    if (!n) { setError('اكتب الاسم أولًا'); return }
+    setError('')
+    setBusy(true)
+    try {
+      const gid = await groupId()
+      await db.insertShared('departments', { name: n }, undefined, { groupId: gid, visibleTo: 'group' })
+      setName('')
+      await load()
+      onToast?.('تمت الإضافة')
+    } catch (e) { setError('تعذر الحفظ: ' + (e.message || e)) }
+    setBusy(false)
+  }
+
+  async function doRemove(id) {
+    setConfirmId(null)
+    try { await db.deleteShared('departments', id); await load(); onToast?.('تم الحذف') }
+    catch (e) { setError('تعذر الحذف: ' + (e.message || e)) }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input value={name} onChange={e => { setName(e.target.value); setError('') }} onKeyDown={e => e.key === 'Enter' && add()}
+          placeholder="مثال: المبيعات، العمليات" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50" />
+        <button onClick={add} disabled={busy} className="px-4 rounded-xl bg-cyan-400 text-black font-semibold flex items-center gap-1 disabled:opacity-50">
+          {busy ? <Loader2 className="animate-spin" size={16} /> : <Plus size={18} />}
+        </button>
+      </div>
+      <p className="text-xs text-white/40 leading-relaxed">اضغط على أي قسم لتحديد أوقات دوام خاصة به (مثلاً قسم من 6 لـ2، وقسم تاني من 6 لـ5) — القسم من غير أوقات خاصة يستخدم أوقات الدوام العامة.</p>
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+          <AlertCircle size={14} className="shrink-0" /> <span className="flex-1">{error}</span>
+          <button onClick={() => setError('')}><X size={14} /></button>
+        </div>
+      )}
+      {loading ? <div className="text-white/40 text-sm py-4 text-center">جارٍ التحميل…</div>
+        : items.length === 0 ? <div className="cn-glass rounded-2xl p-6 text-center text-white/50 text-sm">لا يوجد أي قسم بعد.</div>
+        : (
+          <div className="space-y-2">
+            {items.map(it => (
+              <DepartmentRow key={it.id} item={it} open={openId === it.id}
+                onToggle={() => setOpenId(o => o === it.id ? null : it.id)}
+                onDelete={() => setConfirmId(it.id)}
+                onSaved={async (msg) => { await load(); onToast?.(msg) }} />
+            ))}
+          </div>
+        )}
+      <ConfirmDialog open={confirmId != null} text="حذف هذا القسم؟"
+        onConfirm={() => doRemove(confirmId)} onCancel={() => setConfirmId(null)} />
+    </div>
+  )
+}
+
+function DepartmentRow({ item, open, onToggle, onDelete, onSaved }) {
+  const hasOverride = !!(item.startTime && item.endTime)
+  const [form, setForm] = useState({
+    startTime: item.startTime || '09:00',
+    endTime: item.endTime || '17:00',
+    graceMinutes: item.graceMinutes ?? 15,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      await db.updateShared('departments', item.id, {
+        startTime: form.startTime, endTime: form.endTime, graceMinutes: Number(form.graceMinutes) || 0,
+      })
+      await onSaved('تم حفظ أوقات القسم')
+    } catch (e) { setError('تعذر الحفظ: ' + (e.message || e)) }
+    setSaving(false)
+  }
+
+  async function clearOverride() {
+    setSaving(true); setError('')
+    try {
+      await db.updateShared('departments', item.id, { startTime: null, endTime: null, graceMinutes: null })
+      await onSaved('تم الرجوع لأوقات الدوام العامة')
+    } catch (e) { setError('تعذر الحفظ: ' + (e.message || e)) }
+    setSaving(false)
+  }
+
+  return (
+    <div className="cn-glass rounded-xl overflow-hidden">
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3">
+        <span className="text-white/85 text-sm flex items-center gap-2">
+          {item.name}
+          {hasOverride && <span className="text-[10px] text-cyan-300 bg-cyan-400/10 rounded px-1.5 py-0.5">دوام خاص</span>}
+        </span>
+        <span className="flex items-center gap-2">
+          <span onClick={(e) => { e.stopPropagation(); onDelete() }} className="text-white/25 hover:text-red-400 p-1"><Trash2 size={15} /></span>
+          <ChevronDown size={16} className={`text-white/40 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-white/10 pt-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="space-y-1.5">
+              <span className="text-xs text-white/50">بداية الدوام</span>
+              <input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs text-white/50">انتهاء الدوام</span>
+              <input type="time" value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+            </label>
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-xs text-white/50">مهلة السماح بالتأخير (دقائق)</span>
+            <input type="number" min="0" value={form.graceMinutes} onChange={e => setForm(f => ({ ...f, graceMinutes: e.target.value }))}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+          </label>
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+              <AlertCircle size={14} className="shrink-0" /> <span className="flex-1">{error}</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            {hasOverride && (
+              <button onClick={clearOverride} disabled={saving} className="flex-1 py-2 rounded-xl bg-white/5 text-white/70 text-xs font-medium disabled:opacity-50">
+                استخدام الدوام العام
+              </button>
+            )}
+            <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-xl bg-cyan-400 text-black text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
+              {saving ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />} حفظ أوقات هذا القسم
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

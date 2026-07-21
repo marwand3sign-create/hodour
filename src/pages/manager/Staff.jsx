@@ -3,7 +3,7 @@ import { UserPlus, Pencil, X, Loader2, ShieldCheck, ScanFace, Ban, Trash2, Rotat
 import { QRCodeSVG } from 'qrcode.react'
 import { team } from '../../lib/team'
 import { db } from '../../lib/db'
-import { groupId, money } from '../../store'
+import { groupId, money, daysInMonth } from '../../store'
 
 export default function Staff({ openRoster, canManage }) {
   const [members, setMembers] = useState([])
@@ -139,7 +139,9 @@ export default function Staff({ openRoster, canManage }) {
                     {p.jobTitle || m.role || 'موظف'}{p.department ? ` · ${p.department}` : ''}
                   </div>
                   <div className="text-xs tabular-nums mt-0.5">
-                    {p.dailyWage
+                    {p.wageType === 'monthly' && p.monthlySalary
+                      ? <span className="text-white/50">{money(p.monthlySalary)}/شهر{p.overtimeRate ? ` · ${money(p.overtimeRate)}/يوم إضافي` : ''}</span>
+                      : p.dailyWage
                       ? <span className="text-white/50">{money(p.dailyWage)}/يوم{p.overtimeRate ? ` · ${money(p.overtimeRate)}/يوم إضافي` : ''}</span>
                       : <span className="text-amber-400">اضغط ✎ لإدخال الاسم والراتب</span>}
                   </div>
@@ -267,7 +269,9 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
     fullName: profile.fullName || member.displayName || member.handle || '',
     department: profile.department || '',
     jobTitle: profile.jobTitle || '',
+    wageType: profile.wageType || 'daily',
     dailyWage: profile.dailyWage ?? '',
+    monthlySalary: profile.monthlySalary ?? '',
     overtimeRate: profile.overtimeRate ?? '',
   })
   const [resetRef, setResetRef] = useState(false)
@@ -301,7 +305,9 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
         fullName: form.fullName.trim(),
         department: form.department,
         jobTitle: form.jobTitle,
+        wageType: form.wageType,
         dailyWage: Number(form.dailyWage) || 0,
+        monthlySalary: Number(form.monthlySalary) || 0,
         overtimeRate: Number(form.overtimeRate) || 0,
         active: true,
         ...(resetRef ? { referencePhoto: null } : {}),
@@ -333,14 +339,37 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
               {jobTitles.map(j => <option key={j.id} value={j.name} style={optionStyle}>{j.name}</option>)}
             </select>
           </Field>
+          <Field label="نوع الراتب">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => set('wageType', 'daily')}
+                className={`py-2 rounded-xl text-sm font-medium transition ${form.wageType === 'daily' ? 'bg-cyan-400 text-black' : 'bg-white/5 text-white/60'}`}>
+                يومي
+              </button>
+              <button type="button" onClick={() => set('wageType', 'monthly')}
+                className={`py-2 rounded-xl text-sm font-medium transition ${form.wageType === 'monthly' ? 'bg-cyan-400 text-black' : 'bg-white/5 text-white/60'}`}>
+                شهري
+              </button>
+            </div>
+          </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="الراتب اليومي">
-              <input type="number" inputMode="decimal" value={form.dailyWage} onChange={e => set('dailyWage', e.target.value)} className={inputCls} placeholder="0" />
-            </Field>
+            {form.wageType === 'monthly' ? (
+              <Field label="الراتب الشهري">
+                <input type="number" inputMode="decimal" value={form.monthlySalary} onChange={e => set('monthlySalary', e.target.value)} className={inputCls} placeholder="0" />
+              </Field>
+            ) : (
+              <Field label="الراتب اليومي">
+                <input type="number" inputMode="decimal" value={form.dailyWage} onChange={e => set('dailyWage', e.target.value)} className={inputCls} placeholder="0" />
+              </Field>
+            )}
             <Field label="اليوم الإضافي">
               <input type="number" inputMode="decimal" value={form.overtimeRate} onChange={e => set('overtimeRate', e.target.value)} className={inputCls} placeholder="0" />
             </Field>
           </div>
+          {form.wageType === 'monthly' && Number(form.monthlySalary) > 0 && (
+            <p className="text-[11px] text-white/40 -mt-1.5">
+              يُقسَّم على أيام الشهر الحالي ({daysInMonth()} يوم) — يعادل تقريبًا {money(Number(form.monthlySalary) / daysInMonth())}/يوم.
+            </p>
+          )}
 
           {profile.referencePhoto && (
             <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3">

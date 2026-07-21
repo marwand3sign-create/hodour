@@ -139,6 +139,37 @@ export function overtimeDays(hours, shift) {
   return (Number(hours) || 0) / h
 }
 
+// Number of calendar days in the month a "YYYY-MM-DD" date falls in —
+// the divisor for turning a monthly salary into an effective daily rate.
+export function daysInMonth(dateStr) {
+  const d = new Date(dateStr || todayStr())
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+}
+
+// Some employees are paid a fixed monthly salary instead of a per-day rate
+// (see employees.wageType/monthlySalary) — this reduces either shape to the
+// per-day figure Reports.jsx's payroll math already works in. `periodStart`
+// picks which month's day-count to divide by (a monthly salary paid this
+// January is a different day-rate than the same salary in February).
+export function effectiveDailyWage(employee, periodStart) {
+  if (employee?.wageType === 'monthly') {
+    return (Number(employee.monthlySalary) || 0) / daysInMonth(periodStart)
+  }
+  return Number(employee?.dailyWage) || 0
+}
+
+// A department can override the company-wide shift (e.g. one department
+// 6am-2pm, another 6am-5pm — see Setup.jsx's department shift editor).
+// Falls back to the global shift when the department has no override, or
+// isn't found (deleted, or the employee has no department set).
+export function resolveShift(departmentName, departments, globalShift) {
+  const dep = (departments || []).find(d => d.name === departmentName)
+  if (dep?.startTime && dep?.endTime) {
+    return { startTime: dep.startTime, endTime: dep.endTime, graceMinutes: dep.graceMinutes ?? globalShift?.graceMinutes ?? DEFAULT_SHIFT.graceMinutes }
+  }
+  return globalShift || DEFAULT_SHIFT
+}
+
 // Minutes an arrival is late vs the shift start (after the grace period). 0 = on time.
 export function lateMinutes(checkInIso, shift) {
   if (!checkInIso) return 0

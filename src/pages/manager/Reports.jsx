@@ -3,7 +3,7 @@ import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { db } from '../../lib/db'
 import { docs } from '../../lib/docs'
 import { download } from '../../lib/download'
-import { todayStr, money, DEFAULT_SHIFT, overtimeDays } from '../../store'
+import { todayStr, money, DEFAULT_SHIFT, overtimeDays, effectiveDailyWage, resolveShift } from '../../store'
 
 function startOfWeek() { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return todayStr(d) }
 function startOfMonth() { return todayStr().slice(0, 8) + '01' }
@@ -22,7 +22,7 @@ export default function Reports() {
   const [dept, setDept] = useState('all')
   const [employees, setEmployees] = useState([])
   const [records, setRecords] = useState([])
-  const [deptList, setDeptList] = useState([])
+  const [deptRows, setDeptRows] = useState([])
   const [company, setCompany] = useState({ name: '' })
   const [shift, setShift] = useState(DEFAULT_SHIFT)
   const [loading, setLoading] = useState(true)
@@ -39,7 +39,7 @@ export default function Reports() {
         db.selectShared('departments', {}, { limit: 200 }),
       ])
       setEmployees(emps); setRecords(recs)
-      setDeptList((depts || []).map(d => d.name).filter(Boolean))
+      setDeptRows(depts || [])
       if (comp[0]) setCompany({ name: comp[0].name || '' })
       if (sh[0]) setShift({ ...DEFAULT_SHIFT, ...sh[0] })
     } catch (e) { /* noop */ }
@@ -49,7 +49,13 @@ export default function Reports() {
 
   const wageByUser = useMemo(() => {
     const m = {}
-    for (const e of employees) m[e.userId] = { name: e.fullName, department: e.department, jobTitle: e.jobTitle, daily: Number(e.dailyWage) || 0, ot: Number(e.overtimeRate) || 0 }
+    for (const e of employees) {
+      m[e.userId] = {
+        name: e.fullName, department: e.department, jobTitle: e.jobTitle,
+        wageType: e.wageType, monthlySalary: e.monthlySalary, dailyWage: e.dailyWage,
+        ot: Number(e.overtimeRate) || 0,
+      }
+    }
     return m
   }, [employees])
 
@@ -65,25 +71,30 @@ export default function Reports() {
       byUser[id].ot += Number(r.overtimeHours) || 0
     }
     return Object.entries(byUser).map(([id, v]) => {
-      const w = wageByUser[id] || { daily: 0, ot: 0 }
+      const w = wageByUser[id] || { ot: 0 }
       const dep = (w.department || v.department || '').trim() || NO_DEPT
-      const otDays = overtimeDays(v.ot, shift)
-      const wage = v.days * w.daily + otDays * w.ot
+      // Overtime is paid as a fraction of "one day" — and "one day" is however
+      // long this department's own shift runs (see Setup.jsx's per-department
+      // shift editor), not necessarily the company-wide default.
+      const deptShift = resolveShift(dep, deptRows, shift)
+      const otDays = overtimeDays(v.ot, deptShift)
+      const daily = effectiveDailyWage(w, start)
+      const wage = v.days * daily + otDays * w.ot
       return {
         id, name: w.name || v.name, department: dep, jobTitle: w.jobTitle || '',
-        days: v.days, hours: v.hours, ot: otDays, daily: w.daily, otRate: w.ot, wage,
+        days: v.days, hours: v.hours, ot: otDays, daily, otRate: w.ot, wage,
       }
     }).sort((a, b) => b.wage - a.wage)
-  }, [records, wageByUser, shift])
+  }, [records, wageByUser, shift, deptRows, start])
 
   // The dropdown must list every configured department (Setup.jsx), not just
   // ones with completed attendance in the currently selected date range —
   // otherwise picking a wider range that happens to have zero records left
   // the filter with nothing to choose but "كل الأقسام".
   const departments = useMemo(() => {
-    const set = new Set([...deptList, ...flatRows.map(r => r.department)])
+    const set = new Set([...deptRows.map(d => d.name), ...flatRows.map(r => r.department)])
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'))
-  }, [deptList, flatRows])
+  }, [deptRows, flatRows])
 
   // Grouped by department (used for both the "all" view and export)
   const groups = useMemo(() => {
