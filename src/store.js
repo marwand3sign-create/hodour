@@ -244,7 +244,8 @@ export function fmtDateLong(d = new Date()) {
 
 export function hoursBetween(a, b) {
   if (!a || !b) return 0
-  return Math.max(0, (new Date(b) - new Date(a)) / 3600000)
+  const hrs = Math.max(0, (new Date(b) - new Date(a)) / 3600000)
+  return Math.round(hrs * 100) / 100
 }
 
 export function money(n) {

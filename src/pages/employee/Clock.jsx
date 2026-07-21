@@ -289,7 +289,7 @@ export default function ClockPage() {
       const { blob, embedding } = await captureFaceBlob()
       const out = new Date().toISOString()
       const worked = hoursBetween(target.checkIn, out)
-      const overtime = Math.max(0, worked - shiftHours(effectiveShift))
+      const overtime = Math.round(Math.max(0, worked - shiftHours(effectiveShift)) * 100) / 100
       // Same field (gpsSuspicious) is reused on checkout — reported as an UPDATE
       // rising-edge so the manager still gets notified even if check-in looked clean.
       const outSuspicious = !!geo.suspicious

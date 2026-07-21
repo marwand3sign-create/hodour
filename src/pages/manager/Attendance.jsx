@@ -150,7 +150,7 @@ function ForceCheckoutModal({ r, shift, onClose }) {
 
   const checkOutIso = fromLocalInputValue(checkOutLocal)
   const worked = Math.max(0, hoursBetween(r.checkIn, checkOutIso))
-  const overtime = Math.max(0, worked - shiftHours(shift))
+  const overtime = Math.round(Math.max(0, worked - shiftHours(shift)) * 100) / 100
   const invalid = new Date(checkOutIso) <= new Date(r.checkIn)
 
   async function save() {
@@ -198,8 +198,11 @@ function ForceCheckoutModal({ r, shift, onClose }) {
 
 function EditRecordModal({ r, onClose }) {
   const [form, setForm] = useState({
-    workedHours: r.workedHours ?? 0,
-    overtimeHours: r.overtimeHours ?? 0,
+    // Older records may carry long floating-point tails from before hours
+    // were rounded at the source (store.js hoursBetween) — clean those up
+    // whenever the field is opened, not just for newly-computed values.
+    workedHours: Math.round((Number(r.workedHours) || 0) * 100) / 100,
+    overtimeHours: Math.round((Number(r.overtimeHours) || 0) * 100) / 100,
     lateMinutes: r.lateMinutes ?? 0,
     note: r.note || '',
   })
