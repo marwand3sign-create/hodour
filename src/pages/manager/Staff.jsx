@@ -232,26 +232,34 @@ export default function Staff({ openRoster, canManage }) {
   )
 }
 
-// Reuses the already-rendered QR <svg> from the modal (via ref) instead of
-// regenerating it in the popup — no second QR library / CDN dependency needed.
+// Reuses the already-rendered QR <svg> from the modal (via ref). Deliberately
+// NOT window.open() — popup blockers swallow it silently with zero feedback,
+// which is exactly what read to a manager as "printing doesn't work" (no
+// error, no popup, nothing). Instead this injects a print-only node into the
+// current page (hidden on screen, shown via the @media print rule in
+// index.css) and calls window.print() directly, which is always a same-page,
+// user-gesture-triggered action no blocker can intercept.
 function printBadge(svgEl, handle, name) {
   if (!svgEl) return
-  const win = window.open('', '_blank', 'width=400,height=520')
-  if (!win) return
-  win.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${name}</title>
-    <style>
-      body { font-family: Tahoma, Arial, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; gap:14px; }
-      #qr { padding:16px; border:2px solid #0f172a; border-radius:16px; }
-      h2 { margin:0; font-size:18px; color:#0f172a; }
-      p { margin:0; color:#64748b; font-size:12px; direction:ltr; }
-    </style></head>
-    <body>
-      <div id="qr">${svgEl.outerHTML}</div>
-      <h2>${name}</h2>
-      <p>@${handle}</p>
-      <script>window.onload = () => setTimeout(() => window.print(), 200)</script>
-    </body></html>`)
-  win.document.close()
+  const area = document.createElement('div')
+  area.id = 'print-badge-area'
+  area.style.cssText = 'display:none; position:fixed; inset:0; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:#fff; font-family:Tahoma,Arial,sans-serif; z-index:9999;'
+  const qrBox = document.createElement('div')
+  qrBox.style.cssText = 'padding:16px; border:2px solid #0f172a; border-radius:16px;'
+  qrBox.appendChild(svgEl.cloneNode(true))
+  const h2 = document.createElement('h2')
+  h2.style.cssText = 'margin:0; font-size:18px; color:#0f172a;'
+  h2.textContent = name
+  const p = document.createElement('p')
+  p.style.cssText = 'margin:0; color:#64748b; font-size:12px; direction:ltr;'
+  p.textContent = '@' + handle
+  area.append(qrBox, h2, p)
+  document.body.appendChild(area)
+
+  const cleanup = () => { area.remove(); window.removeEventListener('afterprint', cleanup) }
+  window.addEventListener('afterprint', cleanup)
+  window.print()
+  setTimeout(cleanup, 8000) // afterprint doesn't fire in every browser/print-to-PDF path
 }
 
 function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }) {

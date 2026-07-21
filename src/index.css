@@ -64,3 +64,12 @@ html { scrollbar-width: none; }
   to { opacity: 1; transform: translateY(0); }
 }
 .cn-rise { animation: cn-rise 0.5s ease both; }
+
+/* Employee badge printing (Staff.jsx printBadge) — avoids window.open(), which
+   popup blockers silently swallow with zero feedback (that silence is what
+   read to the manager as "printing doesn't work"). Instead this hides
+   everything except the injected #print-badge-area for the print pass. */
+@media print {
+  body > *:not(#print-badge-area) { display: none !important; }
+  #print-badge-area { display: flex !important; }
+}
