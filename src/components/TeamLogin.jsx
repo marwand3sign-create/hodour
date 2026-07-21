@@ -253,6 +253,22 @@ export default function TeamLogin({ appName, mode, code, ownerSignIn = true, onS
     }
   }
 
+  // Badge QR encodes "handle:pin" (see Staff.jsx printBadge) — scanning it
+  // logs in immediately with no further typing, so it's called straight
+  // away rather than just filling the form fields.
+  async function loginFromBadge(handleValue, pinValue) {
+    setErr(null)
+    setBusy(true)
+    try {
+      const result = await team.login({ handle: handleValue, password: pinValue })
+      onSignedIn?.(result)
+    } catch (e) {
+      setErr(e?.message || L.genericError)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function submitRequest(e) {
     e.preventDefault()
     if (busy) return
@@ -507,7 +523,18 @@ export default function TeamLogin({ appName, mode, code, ownerSignIn = true, onS
         <QrScanner
           title={isArabic ? 'امسح باركود البطاقة' : 'Scan your badge'}
           onClose={() => setScanning(false)}
-          onScan={(value) => { setHandle(value.trim()); setScanning(false); setErr(null) }}
+          onScan={(value) => {
+            setScanning(false)
+            const v = value.trim()
+            const sep = v.indexOf(':')
+            if (sep > 0) {
+              const h = v.slice(0, sep), p = v.slice(sep + 1)
+              setHandle(h); setPassword(p)
+              loginFromBadge(h, p)
+            } else {
+              setHandle(v); setErr(null)
+            }
+          }}
         />
       )}
     </div>

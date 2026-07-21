@@ -273,8 +273,23 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
   const [resetRef, setResetRef] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [badgePin, setBadgePin] = useState(null)
+  const [badgeBusy, setBadgeBusy] = useState(false)
   const qrRef = useRef(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Supabase Auth never returns an existing plaintext password, so a badge
+  // that encodes handle+PIN together can only be built right after setting
+  // one — this resets the employee's PIN to a fresh random value (their old
+  // one stops working) purely so we have a plaintext PIN to put on the badge.
+  async function generateBadge() {
+    setBadgeBusy(true); setError('')
+    try {
+      const { tempPassword } = await team.resetPassword(member.userId)
+      setBadgePin(tempPassword)
+    } catch (e) { setError('تعذر توليد البطاقة: ' + (e.message || e)) }
+    setBadgeBusy(false)
+  }
 
   async function save() {
     if (!form.fullName.trim()) { setError('أدخل اسم الموظف'); return }
@@ -342,18 +357,35 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
           )}
 
           {member.handle && (
-            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3">
-              <div ref={qrRef} className="bg-white rounded-lg p-1.5 shrink-0">
-                <QRCodeSVG value={member.handle} size={56} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-white/60">بطاقة الدخول بالباركود</div>
-                <div className="text-[11px] text-white/35">يمسحها الموظف بدل كتابة اسم المستخدم</div>
-              </div>
-              <button type="button" onClick={() => printBadge(qrRef.current?.querySelector('svg'), member.handle, form.fullName)}
-                className="shrink-0 flex items-center gap-1.5 text-xs text-cyan-300 bg-cyan-400/10 px-2.5 py-1.5 rounded-lg">
-                <Printer size={13} /> طباعة
-              </button>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+              {!badgePin ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-white/60">بطاقة دخول بالباركود</div>
+                    <div className="text-[11px] text-white/35">يمسحها الموظف فيدخل مباشرة بدون كتابة اسم مستخدم أو رقم سري</div>
+                  </div>
+                  <button type="button" disabled={badgeBusy} onClick={generateBadge}
+                    className="shrink-0 flex items-center gap-1.5 text-xs text-cyan-300 bg-cyan-400/10 px-2.5 py-1.5 rounded-lg disabled:opacity-50">
+                    {badgeBusy ? <Loader2 className="animate-spin" size={13} /> : null} توليد بطاقة
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div ref={qrRef} className="bg-white rounded-lg p-1.5 shrink-0">
+                      <QRCodeSVG value={`${member.handle}:${badgePin}`} size={56} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-white/60">الرقم السري الجديد: <code className="text-cyan-200 font-bold" dir="ltr">{badgePin}</code></div>
+                      <div className="text-[11px] text-amber-300/90 mt-0.5">الرقم القديم توقف عن العمل — استخدم هذه البطاقة فقط من الآن</div>
+                    </div>
+                    <button type="button" onClick={() => printBadge(qrRef.current?.querySelector('svg'), member.handle, form.fullName)}
+                      className="shrink-0 flex items-center gap-1.5 text-xs text-cyan-300 bg-cyan-400/10 px-2.5 py-1.5 rounded-lg">
+                      <Printer size={13} /> طباعة
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
