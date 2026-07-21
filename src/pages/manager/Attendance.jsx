@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert, Pencil, CalendarPlus, Loader2, Check } from 'lucide-react'
+import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert, Pencil, CalendarPlus, Loader2, Check, LogOut } from 'lucide-react'
 import { useLiveShared } from '../../lib/useLive'
 import { db } from '../../lib/db'
-import { groupId, todayStr, fmtTime } from '../../store'
+import { groupId, todayStr, fmtTime, DEFAULT_SHIFT, resolveShift, shiftHours, hoursBetween } from '../../store'
 
 export default function Attendance() {
   const [date, setDate] = useState(todayStr())
   const [viewing, setViewing] = useState(null)
   const [editing, setEditing] = useState(null)
   const [addingExtra, setAddingExtra] = useState(false)
+  const [checkingOut, setCheckingOut] = useState(null)
   const [employees, setEmployees] = useState({})
+  const [deptRows, setDeptRows] = useState([])
+  const [shift, setShift] = useState(DEFAULT_SHIFT)
   const { data, loading } = useLiveShared('attendance', { order: '-createdAt', limit: 800 })
   const { data: empData } = useLiveShared('employees', { limit: 500 })
 
@@ -18,6 +21,19 @@ export default function Attendance() {
     ;(empData || []).forEach(e => { map[e.userId] = e })
     setEmployees(map)
   }, [empData])
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [depts, sh] = await Promise.all([
+          db.selectShared('departments', {}, { limit: 200 }),
+          db.selectShared('settings', { key: 'shift' }, { limit: 1 }),
+        ])
+        setDeptRows(depts || [])
+        if (sh?.[0]) setShift({ ...DEFAULT_SHIFT, ...sh[0] })
+      } catch { /* non-critical */ }
+    })()
+  }, [])
 
   const rows = useMemo(() => (data || []).filter(r => r.date === date && r.status !== 'flag-only'), [data, date])
 
@@ -91,6 +107,9 @@ export default function Attendance() {
                   </div>
                 )}
               </div>
+              {r.status === 'in' && (
+                <button onClick={() => setCheckingOut(r)} title="تسجيل خروج يدوي" className="text-amber-400/70 hover:text-amber-300 shrink-0 p-1"><LogOut size={16} /></button>
+              )}
               <button onClick={() => setEditing(r)} className="text-white/25 hover:text-cyan-300 shrink-0 p-1"><Pencil size={15} /></button>
               <button onClick={() => remove(r)} className="text-white/25 hover:text-red-400 shrink-0 p-1"><Trash2 size={16} /></button>
             </div>
@@ -101,6 +120,78 @@ export default function Attendance() {
       {viewing && <FaceModal r={viewing} refPhoto={employees[viewing.employeeUserId]?.referencePhoto} onClose={() => setViewing(null)} />}
       {editing && <EditRecordModal r={editing} onClose={() => setEditing(null)} />}
       {addingExtra && <AddExtraDayModal employees={empData || []} defaultDate={date} onClose={() => setAddingExtra(false)} />}
+      {checkingOut && (
+        <ForceCheckoutModal
+          r={checkingOut}
+          shift={resolveShift(employees[checkingOut.employeeUserId]?.department, deptRows, shift)}
+          onClose={() => setCheckingOut(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// <input type="datetime-local"> works in local time with no timezone, so a
+// straight `.toISOString().slice(0,16)` would silently shift the displayed
+// time by the browser's UTC offset — build/parse the local string by hand.
+function toLocalInputValue(iso) {
+  const d = new Date(iso)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function fromLocalInputValue(str) {
+  return new Date(str).toISOString()
+}
+
+function ForceCheckoutModal({ r, shift, onClose }) {
+  const [checkOutLocal, setCheckOutLocal] = useState(toLocalInputValue(new Date().toISOString()))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const checkOutIso = fromLocalInputValue(checkOutLocal)
+  const worked = Math.max(0, hoursBetween(r.checkIn, checkOutIso))
+  const overtime = Math.max(0, worked - shiftHours(shift))
+  const invalid = new Date(checkOutIso) <= new Date(r.checkIn)
+
+  async function save() {
+    if (invalid) { setError('وقت الخروج لازم يكون بعد وقت الدخول'); return }
+    setSaving(true); setError('')
+    try {
+      await db.updateShared('attendance', r.id, {
+        checkOut: checkOutIso,
+        workedHours: worked,
+        overtimeHours: overtime,
+        status: 'out',
+        note: r.note ? r.note : 'تسجيل خروج يدوي بواسطة المدير',
+      })
+      onClose()
+    } catch (e) { setError('تعذر الحفظ: ' + (e.message || e)); setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-40 flex items-end md:items-center justify-center p-0 md:p-6" style={{ height: 'var(--visual-height, 100dvh)' }}>
+      <div className="w-full max-w-sm cn-aurora border border-white/10 rounded-t-3xl md:rounded-3xl p-6 overflow-y-auto" style={{ maxHeight: 'calc(var(--visual-height, 100dvh) - 2rem)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-lg font-bold text-white">تسجيل خروج يدوي</h2>
+            <p className="text-xs text-white/45">{r.employeeName} — دخل الساعة {fmtTime(r.checkIn)}</p>
+          </div>
+          <button onClick={onClose} className="text-white/50"><X size={20} /></button>
+        </div>
+        <div className="space-y-3">
+          <ModalField label="وقت الخروج">
+            <input type="datetime-local" value={checkOutLocal} onChange={e => setCheckOutLocal(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+          </ModalField>
+          <div className="flex items-center gap-2 text-xs text-cyan-300 bg-cyan-400/10 rounded-lg px-3 py-2">
+            <span>سيُحتسب: <span className="font-semibold tabular-nums">{worked.toFixed(1)}</span> ساعة عمل{overtime > 0 && <> · <span className="font-semibold tabular-nums">{overtime.toFixed(1)}</span> ساعة إضافية</>}</span>
+          </div>
+        </div>
+        {error && <div className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</div>}
+        <button onClick={save} disabled={saving || invalid} className="w-full mt-5 py-3 rounded-xl bg-amber-400 text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+          {saving ? <Loader2 className="animate-spin" size={18} /> : <LogOut size={18} />} تسجيل الخروج
+        </button>
+      </div>
     </div>
   )
 }
