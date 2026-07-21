@@ -1,116 +1,122 @@
 {
-  "hash": "436e1994",
+  "hash": "6bb4d3ff",
   "configHash": "0b042554",
-  "lockfileHash": "c744fbfc",
-  "browserHash": "414b3990",
+  "lockfileHash": "3797f3ea",
+  "browserHash": "1dd90938",
   "optimized": {
     "react": {
       "src": "../../node_modules/react/index.js",
       "file": "react.js",
-      "fileHash": "03b307f4",
+      "fileHash": "ae03a987",
       "needsInterop": true
     },
     "react-dom": {
       "src": "../../node_modules/react-dom/index.js",
       "file": "react-dom.js",
-      "fileHash": "3415c1b7",
+      "fileHash": "5c890377",
       "needsInterop": true
     },
     "react-dom/client": {
       "src": "../../node_modules/react-dom/client.js",
       "file": "react-dom_client.js",
-      "fileHash": "5d8777b4",
+      "fileHash": "ddafb414",
       "needsInterop": true
     },
     "react-router-dom": {
       "src": "../../node_modules/react-router-dom/dist/index.js",
       "file": "react-router-dom.js",
-      "fileHash": "463e9159",
+      "fileHash": "915635e7",
       "needsInterop": false
     },
     "lucide-react": {
       "src": "../../node_modules/lucide-react/dist/esm/lucide-react.js",
       "file": "lucide-react.js",
-      "fileHash": "8ef14e14",
+      "fileHash": "14adeccf",
       "needsInterop": false
     },
     "date-fns": {
       "src": "../../node_modules/date-fns/index.mjs",
       "file": "date-fns.js",
-      "fileHash": "9345c2b1",
+      "fileHash": "d6623787",
       "needsInterop": false
     },
     "date-fns/locale": {
       "src": "../../node_modules/date-fns/locale.mjs",
       "file": "date-fns_locale.js",
-      "fileHash": "e3dab06f",
+      "fileHash": "0fc814c3",
       "needsInterop": false
     },
     "phaser": {
       "src": "../../node_modules/phaser/dist/phaser.js",
       "file": "phaser.js",
-      "fileHash": "ca6d915b",
+      "fileHash": "ff7777f1",
       "needsInterop": true
     },
     "leaflet": {
       "src": "../../node_modules/leaflet/dist/leaflet-src.js",
       "file": "leaflet.js",
-      "fileHash": "e5334a68",
+      "fileHash": "5d5a4546",
       "needsInterop": true
     },
     "react-leaflet": {
       "src": "../../node_modules/react-leaflet/lib/index.js",
       "file": "react-leaflet.js",
-      "fileHash": "2a79aff5",
+      "fileHash": "d5385b95",
       "needsInterop": false
     },
     "qrcode.react": {
       "src": "../../node_modules/qrcode.react/lib/esm/index.js",
       "file": "qrcode__react.js",
-      "fileHash": "11376d6e",
+      "fileHash": "e7c70e86",
       "needsInterop": false
     },
     "@supabase/supabase-js": {
       "src": "../../node_modules/@supabase/supabase-js/dist/index.mjs",
       "file": "@supabase_supabase-js.js",
-      "fileHash": "fdce4b08",
+      "fileHash": "8fff3daa",
       "needsInterop": false
     },
     "react/jsx-dev-runtime": {
       "src": "../../node_modules/react/jsx-dev-runtime.js",
       "file": "react_jsx-dev-runtime.js",
-      "fileHash": "88a411a5",
+      "fileHash": "533fbafb",
       "needsInterop": true
     },
     "react/jsx-runtime": {
       "src": "../../node_modules/react/jsx-runtime.js",
       "file": "react_jsx-runtime.js",
-      "fileHash": "d0f56439",
+      "fileHash": "7357b490",
       "needsInterop": true
     },
     "@mediapipe/tasks-vision": {
       "src": "../../node_modules/@mediapipe/tasks-vision/vision_bundle.mjs",
       "file": "@mediapipe_tasks-vision.js",
-      "fileHash": "e6e775a1",
+      "fileHash": "70af6cce",
       "needsInterop": false
     },
     "exceljs": {
       "src": "../../node_modules/exceljs/dist/exceljs.min.js",
       "file": "exceljs.js",
-      "fileHash": "b89acede",
+      "fileHash": "e85ac7e2",
       "needsInterop": true
     },
     "html2canvas": {
       "src": "../../node_modules/html2canvas/dist/html2canvas.esm.js",
       "file": "html2canvas.js",
-      "fileHash": "e2ca5e61",
+      "fileHash": "53ff1bec",
       "needsInterop": false
     },
     "jspdf": {
       "src": "../../node_modules/jspdf/dist/jspdf.es.min.js",
       "file": "jspdf.js",
-      "fileHash": "b9193b44",
+      "fileHash": "946c11c1",
       "needsInterop": false
+    },
+    "jsqr": {
+      "src": "../../node_modules/jsqr/dist/jsQR.js",
+      "file": "jsqr.js",
+      "fileHash": "89934d26",
+      "needsInterop": true
     }
   },
   "chunks": {

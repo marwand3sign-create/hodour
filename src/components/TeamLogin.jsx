@@ -48,10 +48,12 @@
  */
 
 import React, { useState, useEffect } from 'react'
+import { QrCode } from 'lucide-react'
 import { team } from '../lib/team'
 import { auth } from '../lib/auth'
 import { onPrimaryColor } from '../lib/_on-primary'
 import { brandingHidden, onBrandingChange, refreshBranding } from '../lib/_branding'
+import QrScanner from './QrScanner'
 
 // Same detection cascade as GateLock / the platform auth modal: app-declared
 // direction or lang first, then device language. Evaluated per render — apps
@@ -192,6 +194,7 @@ export default function TeamLogin({ appName, mode, code, ownerSignIn = true, onS
   const [pinMode, setPinMode] = useState(false)
   const [memberPicker, setMemberPicker] = useState(false)
   const [view, setView] = useState('signin')   // 'signin' | 'request' | 'requested'
+  const [scanning, setScanning] = useState(false)
 
   // Per-app sign-in config: "request to join" option + PIN mode + member picker.
   // Accept (invite) mode needs it too — the new member sets a PIN there.
@@ -413,7 +416,13 @@ export default function TeamLogin({ appName, mode, code, ownerSignIn = true, onS
           ) : (
             <div>
               <label className="mb-1.5 block text-[13px] font-semibold text-stone-700">{L.username}</label>
-              <input value={handle} onChange={(e) => setHandle(e.target.value)} autoCapitalize="none" autoCorrect="off" autoComplete="username" placeholder={L.usernamePlaceholder} className={FIELD} required />
+              <div className="flex gap-2">
+                <input value={handle} onChange={(e) => setHandle(e.target.value)} autoCapitalize="none" autoCorrect="off" autoComplete="username" placeholder={L.usernamePlaceholder} className={FIELD} required />
+                <button type="button" onClick={() => setScanning(true)} title={isArabic ? 'مسح باركود البطاقة' : 'Scan badge barcode'}
+                  className="shrink-0 w-11 rounded-xl border border-stone-200 bg-stone-50 flex items-center justify-center text-stone-500 hover:border-stone-300 hover:text-stone-700">
+                  <QrCode size={18} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -492,6 +501,14 @@ export default function TeamLogin({ appName, mode, code, ownerSignIn = true, onS
           <WhackaMark size={14} />
           {L.poweredBy}
         </p>
+      )}
+
+      {scanning && (
+        <QrScanner
+          title={isArabic ? 'امسح باركود البطاقة' : 'Scan your badge'}
+          onClose={() => setScanning(false)}
+          onScan={(value) => { setHandle(value.trim()); setScanning(false); setErr(null) }}
+        />
       )}
     </div>
   )

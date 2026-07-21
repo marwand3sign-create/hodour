@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
-import { UserPlus, Pencil, X, Loader2, ShieldCheck, ScanFace, Ban, Trash2, RotateCcw, ChevronDown, Search } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { UserPlus, Pencil, X, Loader2, ShieldCheck, ScanFace, Ban, Trash2, RotateCcw, ChevronDown, Search, Printer } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { team } from '../../lib/team'
 import { db } from '../../lib/db'
 import { groupId, money } from '../../store'
@@ -231,6 +232,28 @@ export default function Staff({ openRoster, canManage }) {
   )
 }
 
+// Reuses the already-rendered QR <svg> from the modal (via ref) instead of
+// regenerating it in the popup — no second QR library / CDN dependency needed.
+function printBadge(svgEl, handle, name) {
+  if (!svgEl) return
+  const win = window.open('', '_blank', 'width=400,height=520')
+  if (!win) return
+  win.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${name}</title>
+    <style>
+      body { font-family: Tahoma, Arial, sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; gap:14px; }
+      #qr { padding:16px; border:2px solid #0f172a; border-radius:16px; }
+      h2 { margin:0; font-size:18px; color:#0f172a; }
+      p { margin:0; color:#64748b; font-size:12px; direction:ltr; }
+    </style></head>
+    <body>
+      <div id="qr">${svgEl.outerHTML}</div>
+      <h2>${name}</h2>
+      <p>@${handle}</p>
+      <script>window.onload = () => setTimeout(() => window.print(), 200)</script>
+    </body></html>`)
+  win.document.close()
+}
+
 function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }) {
   const [form, setForm] = useState({
     fullName: profile.fullName || member.displayName || member.handle || '',
@@ -242,6 +265,7 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
   const [resetRef, setResetRef] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const qrRef = useRef(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function save() {
@@ -306,6 +330,22 @@ function EditModal({ member, profile, departments, jobTitles, onClose, onSaved }
                 <input type="checkbox" checked={resetRef} onChange={e => setResetRef(e.target.checked)} />
                 إعادة تعيينها
               </label>
+            </div>
+          )}
+
+          {member.handle && (
+            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3">
+              <div ref={qrRef} className="bg-white rounded-lg p-1.5 shrink-0">
+                <QRCodeSVG value={member.handle} size={56} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-white/60">بطاقة الدخول بالباركود</div>
+                <div className="text-[11px] text-white/35">يمسحها الموظف بدل كتابة اسم المستخدم</div>
+              </div>
+              <button type="button" onClick={() => printBadge(qrRef.current?.querySelector('svg'), member.handle, form.fullName)}
+                className="shrink-0 flex items-center gap-1.5 text-xs text-cyan-300 bg-cyan-400/10 px-2.5 py-1.5 rounded-lg">
+                <Printer size={13} /> طباعة
+              </button>
             </div>
           )}
         </div>
