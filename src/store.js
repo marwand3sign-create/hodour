@@ -146,6 +146,20 @@ export function daysInMonth(dateStr) {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
 }
 
+// Every Friday date ("YYYY-MM-DD") in [start, end] — monthly-salary employees
+// are paid for Fridays as a rest day even without clocking in (see
+// Reports.jsx). getDay() === 5 is Friday.
+export function fridaysInRange(start, end) {
+  const out = []
+  const d = new Date(start + 'T00:00:00')
+  const last = new Date(end + 'T00:00:00')
+  while (d <= last) {
+    if (d.getDay() === 5) out.push(todayStr(d))
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+
 // Some employees are paid a fixed monthly salary instead of a per-day rate
 // (see employees.wageType/monthlySalary) — this reduces either shape to the
 // per-day figure Reports.jsx's payroll math already works in. `periodStart`

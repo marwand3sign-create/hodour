@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert } from 'lucide-react'
+import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert, Pencil, CalendarPlus, Loader2, Check } from 'lucide-react'
 import { useLiveShared } from '../../lib/useLive'
 import { db } from '../../lib/db'
-import { todayStr, fmtTime } from '../../store'
+import { groupId, todayStr, fmtTime } from '../../store'
 
 export default function Attendance() {
   const [date, setDate] = useState(todayStr())
   const [viewing, setViewing] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const [addingExtra, setAddingExtra] = useState(false)
   const [employees, setEmployees] = useState({})
   const { data, loading } = useLiveShared('attendance', { order: '-createdAt', limit: 800 })
   const { data: empData } = useLiveShared('employees', { limit: 500 })
@@ -28,10 +30,15 @@ export default function Attendance() {
     <div className="space-y-5 cn-rise">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold text-white">الحضور</h1>
-        <div className="flex items-center gap-2 cn-glass rounded-xl px-3 py-2">
-          <CalendarDays size={16} className="text-cyan-300" />
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            className="bg-transparent text-sm text-white outline-none [color-scheme:dark]" />
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 cn-glass rounded-xl px-3 py-2">
+            <CalendarDays size={16} className="text-cyan-300" />
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="bg-transparent text-sm text-white outline-none [color-scheme:dark]" />
+          </div>
+          <button onClick={() => setAddingExtra(true)} title="إضافة يوم إضافي" className="cn-glass rounded-xl px-3 py-2 text-cyan-300 flex items-center gap-1.5 text-sm font-medium">
+            <CalendarPlus size={16} /> <span className="hidden sm:inline">يوم إضافي</span>
+          </button>
         </div>
       </div>
 
@@ -69,6 +76,11 @@ export default function Attendance() {
                       <ScanFace size={10} /> وجه غير مطابق
                     </span>
                   )}
+                  {r.isManual && (
+                    <span title={r.note || ''} className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-300 bg-cyan-400/15 rounded px-1.5 py-0.5">
+                      <CalendarPlus size={10} /> يدوي
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">
@@ -79,6 +91,7 @@ export default function Attendance() {
                   </div>
                 )}
               </div>
+              <button onClick={() => setEditing(r)} className="text-white/25 hover:text-cyan-300 shrink-0 p-1"><Pencil size={15} /></button>
               <button onClick={() => remove(r)} className="text-white/25 hover:text-red-400 shrink-0 p-1"><Trash2 size={16} /></button>
             </div>
           ))}
@@ -86,7 +99,154 @@ export default function Attendance() {
       )}
 
       {viewing && <FaceModal r={viewing} refPhoto={employees[viewing.employeeUserId]?.referencePhoto} onClose={() => setViewing(null)} />}
+      {editing && <EditRecordModal r={editing} onClose={() => setEditing(null)} />}
+      {addingExtra && <AddExtraDayModal employees={empData || []} defaultDate={date} onClose={() => setAddingExtra(false)} />}
     </div>
+  )
+}
+
+function EditRecordModal({ r, onClose }) {
+  const [form, setForm] = useState({
+    workedHours: r.workedHours ?? 0,
+    overtimeHours: r.overtimeHours ?? 0,
+    lateMinutes: r.lateMinutes ?? 0,
+    note: r.note || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      await db.updateShared('attendance', r.id, {
+        workedHours: Number(form.workedHours) || 0,
+        overtimeHours: Number(form.overtimeHours) || 0,
+        lateMinutes: Number(form.lateMinutes) || 0,
+        note: form.note.trim() || null,
+      })
+      onClose()
+    } catch (e) { setError('تعذر الحفظ: ' + (e.message || e)); setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-40 flex items-end md:items-center justify-center p-0 md:p-6" style={{ height: 'var(--visual-height, 100dvh)' }}>
+      <div className="w-full max-w-sm cn-aurora border border-white/10 rounded-t-3xl md:rounded-3xl p-6 overflow-y-auto" style={{ maxHeight: 'calc(var(--visual-height, 100dvh) - 2rem)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-lg font-bold text-white">تعديل السجل</h2>
+            <p className="text-xs text-white/45">{r.employeeName}</p>
+          </div>
+          <button onClick={onClose} className="text-white/50"><X size={20} /></button>
+        </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <ModalField label="ساعات العمل">
+              <input type="number" inputMode="decimal" step="0.1" value={form.workedHours} onChange={e => set('workedHours', e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50" />
+            </ModalField>
+            <ModalField label="ساعات إضافية">
+              <input type="number" inputMode="decimal" step="0.1" value={form.overtimeHours} onChange={e => set('overtimeHours', e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50" />
+            </ModalField>
+          </div>
+          <ModalField label="دقائق التأخير">
+            <div className="flex gap-2">
+              <input type="number" inputMode="numeric" value={form.lateMinutes} onChange={e => set('lateMinutes', e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50" />
+              <button type="button" onClick={() => set('lateMinutes', 0)} className="shrink-0 px-3 rounded-xl bg-white/5 text-xs text-amber-300 hover:bg-white/10">إعفاء من التأخير</button>
+            </div>
+          </ModalField>
+          <ModalField label="ملاحظة (اختياري)">
+            <input value={form.note} onChange={e => set('note', e.target.value)} placeholder="سبب التعديل"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50" />
+          </ModalField>
+        </div>
+        {error && <div className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</div>}
+        <button onClick={save} disabled={saving} className="w-full mt-5 py-3 rounded-xl bg-cyan-400 text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+          {saving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />} حفظ
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AddExtraDayModal({ employees, defaultDate, onClose }) {
+  const [userId, setUserId] = useState('')
+  const [date, setDate] = useState(defaultDate)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    const emp = employees.find(e => e.userId === userId)
+    if (!emp) { setError('اختر الموظف'); return }
+    setSaving(true); setError('')
+    try {
+      const gid = await groupId()
+      const iso = new Date(date + 'T00:00:00').toISOString()
+      await db.insertShared('attendance', {
+        employeeUserId: emp.userId,
+        employeeName: emp.fullName,
+        department: emp.department || '',
+        jobTitle: emp.jobTitle || '',
+        date,
+        checkIn: iso,
+        checkOut: iso,
+        workedHours: 0,
+        overtimeHours: 0,
+        lateMinutes: 0,
+        status: 'out',
+        faceVerified: false,
+        isManual: true,
+        note: note.trim() || 'يوم إضافي بواسطة المدير',
+      }, undefined, { groupId: gid, visibleTo: 'creator-and-admin' })
+      onClose()
+    } catch (e) { setError('تعذر الإضافة: ' + (e.message || e)); setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-40 flex items-end md:items-center justify-center p-0 md:p-6" style={{ height: 'var(--visual-height, 100dvh)' }}>
+      <div className="w-full max-w-sm cn-aurora border border-white/10 rounded-t-3xl md:rounded-3xl p-6 overflow-y-auto" style={{ maxHeight: 'calc(var(--visual-height, 100dvh) - 2rem)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-lg font-bold text-white">إضافة يوم إضافي</h2>
+          <button onClick={onClose} className="text-white/50"><X size={20} /></button>
+        </div>
+        <p className="text-xs text-white/45 mb-4">يُضاف كسجل حضور كامل يوم واحد (بدون ساعات عمل مرتبطة به) — يُحتسب في التقارير كيوم عمل عادي.</p>
+        <div className="space-y-3">
+          <ModalField label="الموظف">
+            <select value={userId} onChange={e => setUserId(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50">
+              <option value="" style={{ backgroundColor: '#0b1220' }}>— اختر —</option>
+              {employees.filter(e => !e.deleted).map(e => (
+                <option key={e.userId} value={e.userId} style={{ backgroundColor: '#0b1220' }}>{e.fullName || e.userId}</option>
+              ))}
+            </select>
+          </ModalField>
+          <ModalField label="التاريخ">
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+          </ModalField>
+          <ModalField label="ملاحظة (اختياري)">
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="مثال: تعويض عطلة رسمية"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50" />
+          </ModalField>
+        </div>
+        {error && <div className="mt-3 text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</div>}
+        <button onClick={save} disabled={saving} className="w-full mt-5 py-3 rounded-xl bg-cyan-400 text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+          {saving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />} إضافة
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ModalField({ label, children }) {
+  return (
+    <label className="block">
+      <span className="text-xs text-white/50 mb-1 block">{label}</span>
+      {children}
+    </label>
   )
 }
 

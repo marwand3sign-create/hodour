@@ -3,7 +3,7 @@ import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { db } from '../../lib/db'
 import { docs } from '../../lib/docs'
 import { download } from '../../lib/download'
-import { todayStr, money, DEFAULT_SHIFT, overtimeDays, effectiveDailyWage, resolveShift } from '../../store'
+import { todayStr, money, DEFAULT_SHIFT, overtimeDays, effectiveDailyWage, resolveShift, fridaysInRange } from '../../store'
 
 function startOfWeek() { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return todayStr(d) }
 function startOfMonth() { return todayStr().slice(0, 8) + '01' }
@@ -62,13 +62,31 @@ export default function Reports() {
   // Flat per-employee rows across the whole period
   const flatRows = useMemo(() => {
     const byUser = {}
+    // Monthly-salary employees must appear even with zero clock-ins in the
+    // period (they still get paid for Fridays below) — daily-wage employees
+    // are unaffected and only appear once they have a real record.
+    for (const e of employees) {
+      if (e.wageType === 'monthly') {
+        byUser[e.userId] = { name: e.fullName, department: e.department || '', days: 0, hours: 0, ot: 0, dates: new Set() }
+      }
+    }
     for (const r of records) {
       if (!r.checkOut) continue
       const id = r.employeeUserId
-      if (!byUser[id]) byUser[id] = { name: r.employeeName, department: r.department || '', days: 0, hours: 0, ot: 0 }
+      if (!byUser[id]) byUser[id] = { name: r.employeeName, department: r.department || '', days: 0, hours: 0, ot: 0, dates: new Set() }
       byUser[id].days += 1
       byUser[id].hours += Number(r.workedHours) || 0
       byUser[id].ot += Number(r.overtimeHours) || 0
+      byUser[id].dates.add(r.date)
+    }
+    // Fridays are a paid rest day for monthly-salary staff — credit any
+    // Friday in the period they didn't already have a record for (so a
+    // Friday they did clock in on isn't double-counted).
+    const fridays = fridaysInRange(start, end)
+    for (const [id, v] of Object.entries(byUser)) {
+      if (wageByUser[id]?.wageType !== 'monthly') continue
+      const unpaidFridays = fridays.filter(f => !v.dates.has(f)).length
+      v.days += unpaidFridays
     }
     return Object.entries(byUser).map(([id, v]) => {
       const w = wageByUser[id] || { ot: 0 }
@@ -85,7 +103,7 @@ export default function Reports() {
         days: v.days, hours: v.hours, ot: otDays, daily, otRate: w.ot, wage,
       }
     }).sort((a, b) => b.wage - a.wage)
-  }, [records, wageByUser, shift, deptRows, start])
+  }, [records, employees, wageByUser, shift, deptRows, start, end])
 
   // The dropdown must list every configured department (Setup.jsx), not just
   // ones with completed attendance in the currently selected date range —
