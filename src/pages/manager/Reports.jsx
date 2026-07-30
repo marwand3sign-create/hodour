@@ -175,9 +175,6 @@ export default function Reports() {
           cards: [
             { value: String(visibleRowCount), label: 'الموظفون' },
             { value: String(visibleGroups.length), label: 'الأقسام' },
-            { value: String(grandTotals.days), label: 'إجمالي الأيام' },
-            { value: grandTotals.ot.toFixed(2), label: 'أيام إضافية' },
-            ...(carAmount > 0 ? [{ value: money(carAmount), label: 'أجرة سيارة' }] : []),
             { value: money(grandTotalWithCar), label: 'إجمالي الرواتب', color: '#0ea5e9' },
           ],
         },
@@ -305,10 +302,8 @@ export default function Reports() {
         </label>
       </div>
 
-      <div className={`grid ${carAmount > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-3`}>
+      <div className="grid grid-cols-2 gap-3">
         <Stat label="الموظفون" value={visibleRowCount} />
-        <Stat label="الأيام" value={grandTotals.days} />
-        {carAmount > 0 && <Stat label="أجرة سيارة" value={money(carAmount)} />}
         <Stat label={carAmount > 0 ? 'الإجمالي مع السيارة' : 'الرواتب'} value={money(grandTotalWithCar)} />
       </div>
 
