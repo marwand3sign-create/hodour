@@ -306,7 +306,7 @@ function AddExtraDayModal({ employees, defaultDate, onClose }) {
           <h2 className="font-display text-lg font-bold text-white">إضافة يوم إضافي</h2>
           <button onClick={onClose} className="text-white/50"><X size={20} /></button>
         </div>
-        <p className="text-xs text-white/45 mb-4">يُضاف كسجل حضور كامل يوم واحد (بدون ساعات عمل مرتبطة به) — يُحتسب في التقارير كيوم عمل عادي.</p>
+        <p className="text-xs text-white/45 mb-4">يُضاف كيوم كامل بدون ساعات عمل مرتبطة به — يُحتسب في التقارير براتب اليوم الإضافي (وليس الراتب اليومي العادي).</p>
         <div className="space-y-3">
           <ModalField label="الموظف">
             <select value={userId} onChange={e => setUserId(e.target.value)}

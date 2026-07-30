@@ -3,7 +3,7 @@ import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { db } from '../../lib/db'
 import { docs } from '../../lib/docs'
 import { download } from '../../lib/download'
-import { todayStr, money, DEFAULT_SHIFT, overtimeDays, effectiveDailyWage, resolveShift, fridaysInRange } from '../../store'
+import { todayStr, money, effectiveDailyWage, fridaysInRange } from '../../store'
 
 function startOfWeek() { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return todayStr(d) }
 function startOfMonth() { return todayStr().slice(0, 8) + '01' }
@@ -24,24 +24,21 @@ export default function Reports() {
   const [records, setRecords] = useState([])
   const [deptRows, setDeptRows] = useState([])
   const [company, setCompany] = useState({ name: '' })
-  const [shift, setShift] = useState(DEFAULT_SHIFT)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [emps, recs, comp, sh, depts] = await Promise.all([
+      const [emps, recs, comp, depts] = await Promise.all([
         db.selectShared('employees', {}, { limit: 500 }),
         db.selectAllShared('attendance', { date: { between: [start, end] } }, { max: 20000 }),
         db.selectShared('settings', { key: 'company' }, { limit: 1 }),
-        db.selectShared('settings', { key: 'shift' }, { limit: 1 }),
         db.selectShared('departments', {}, { limit: 200 }),
       ])
       setEmployees(emps); setRecords(recs)
       setDeptRows(depts || [])
       if (comp[0]) setCompany({ name: comp[0].name || '' })
-      if (sh[0]) setShift({ ...DEFAULT_SHIFT, ...sh[0] })
     } catch (e) { /* noop */ }
     setLoading(false)
   }, [start, end])
@@ -67,16 +64,23 @@ export default function Reports() {
     // are unaffected and only appear once they have a real record.
     for (const e of employees) {
       if (e.wageType === 'monthly') {
-        byUser[e.userId] = { name: e.fullName, department: e.department || '', days: 0, hours: 0, ot: 0, dates: new Set() }
+        byUser[e.userId] = { name: e.fullName, department: e.department || '', days: 0, hours: 0, extraDays: 0, dates: new Set() }
       }
     }
     for (const r of records) {
       if (!r.checkOut) continue
       const id = r.employeeUserId
-      if (!byUser[id]) byUser[id] = { name: r.employeeName, department: r.department || '', days: 0, hours: 0, ot: 0, dates: new Set() }
-      byUser[id].days += 1
-      byUser[id].hours += Number(r.workedHours) || 0
-      byUser[id].ot += Number(r.overtimeHours) || 0
+      if (!byUser[id]) byUser[id] = { name: r.employeeName, department: r.department || '', days: 0, hours: 0, extraDays: 0, dates: new Set() }
+      // A manager-added "extra day" (Attendance.jsx's يوم إضافي button) is a
+      // flat day paid at the overtime rate — not hours divided by shift
+      // length. No automatic hours→day conversion happens anywhere anymore;
+      // an extra day only exists because a manager explicitly added one.
+      if (r.isManual) {
+        byUser[id].extraDays += 1
+      } else {
+        byUser[id].days += 1
+        byUser[id].hours += Number(r.workedHours) || 0
+      }
       byUser[id].dates.add(r.date)
     }
     // Fridays are a paid rest day for monthly-salary staff — credit any
@@ -91,19 +95,14 @@ export default function Reports() {
     return Object.entries(byUser).map(([id, v]) => {
       const w = wageByUser[id] || { ot: 0 }
       const dep = (w.department || v.department || '').trim() || NO_DEPT
-      // Overtime is paid as a fraction of "one day" — and "one day" is however
-      // long this department's own shift runs (see Setup.jsx's per-department
-      // shift editor), not necessarily the company-wide default.
-      const deptShift = resolveShift(dep, deptRows, shift)
-      const otDays = overtimeDays(v.ot, deptShift)
       const daily = effectiveDailyWage(w, start)
-      const wage = v.days * daily + otDays * w.ot
+      const wage = v.days * daily + v.extraDays * w.ot
       return {
         id, name: w.name || v.name, department: dep, jobTitle: w.jobTitle || '',
-        days: v.days, hours: v.hours, ot: otDays, daily, otRate: w.ot, wage,
+        days: v.days, hours: v.hours, ot: v.extraDays, daily, otRate: w.ot, wage,
       }
     }).sort((a, b) => b.wage - a.wage)
-  }, [records, employees, wageByUser, shift, deptRows, start, end])
+  }, [records, employees, wageByUser, start, end])
 
   // The dropdown must list every configured department (Setup.jsx), not just
   // ones with completed attendance in the currently selected date range —
