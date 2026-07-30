@@ -20,6 +20,10 @@ export default function Reports() {
   const [start, setStart] = useState(startOfMonth())
   const [end, setEnd] = useState(todayStr())
   const [dept, setDept] = useState('all')
+  // Ad-hoc allowance typed in fresh for each report pull (not stored per
+  // employee) — added once per employee within the current department scope
+  // (or everyone, if scope is "all"). See the "أجرة سيارة" field below.
+  const [carAllowance, setCarAllowance] = useState('')
   const [employees, setEmployees] = useState([])
   const [records, setRecords] = useState([])
   const [deptRows, setDeptRows] = useState([])
@@ -92,17 +96,22 @@ export default function Reports() {
       const unpaidFridays = fridays.filter(f => !v.dates.has(f)).length
       v.days += unpaidFridays
     }
+    const carAmount = Number(carAllowance) || 0
     return Object.entries(byUser).map(([id, v]) => {
       const w = wageByUser[id] || { ot: 0 }
       const dep = (w.department || v.department || '').trim() || NO_DEPT
       const daily = effectiveDailyWage(w, start)
-      const wage = v.days * daily + v.extraDays * w.ot
+      // Applies once per employee, only within the currently selected
+      // department scope (or everyone, when scope is "all") — re-enter it
+      // fresh on the next report pull, it's never saved.
+      const car = carAmount > 0 && (dept === 'all' || dep === dept) ? carAmount : 0
+      const wage = v.days * daily + v.extraDays * w.ot + car
       return {
         id, name: w.name || v.name, department: dep, jobTitle: w.jobTitle || '',
-        days: v.days, hours: v.hours, ot: v.extraDays, daily, otRate: w.ot, wage,
+        days: v.days, hours: v.hours, ot: v.extraDays, daily, otRate: w.ot, car, wage,
       }
     }).sort((a, b) => b.wage - a.wage)
-  }, [records, employees, wageByUser, start, end])
+  }, [records, employees, wageByUser, start, end, dept, carAllowance])
 
   // The dropdown must list every configured department (Setup.jsx), not just
   // ones with completed attendance in the currently selected date range —
@@ -121,15 +130,15 @@ export default function Reports() {
       byDept[r.department].push(r)
     }
     return Object.entries(byDept).map(([name, rows]) => {
-      const totals = rows.reduce((t, r) => ({ days: t.days + r.days, hours: t.hours + r.hours, ot: t.ot + r.ot, wage: t.wage + r.wage }), { days: 0, hours: 0, ot: 0, wage: 0 })
+      const totals = rows.reduce((t, r) => ({ days: t.days + r.days, hours: t.hours + r.hours, ot: t.ot + r.ot, car: t.car + (r.car || 0), wage: t.wage + r.wage }), { days: 0, hours: 0, ot: 0, car: 0, wage: 0 })
       return { name, rows, totals }
     }).sort((a, b) => a.name.localeCompare(b, 'ar'))
   }, [flatRows])
 
   const visibleGroups = useMemo(() => dept === 'all' ? groups : groups.filter(g => g.name === dept), [groups, dept])
   const grandTotals = useMemo(() => visibleGroups.reduce((t, g) => ({
-    days: t.days + g.totals.days, hours: t.hours + g.totals.hours, ot: t.ot + g.totals.ot, wage: t.wage + g.totals.wage,
-  }), { days: 0, hours: 0, ot: 0, wage: 0 }), [visibleGroups])
+    days: t.days + g.totals.days, hours: t.hours + g.totals.hours, ot: t.ot + g.totals.ot, car: t.car + g.totals.car, wage: t.wage + g.totals.wage,
+  }), { days: 0, hours: 0, ot: 0, car: 0, wage: 0 }), [visibleGroups])
   const visibleRowCount = useMemo(() => visibleGroups.reduce((n, g) => n + g.rows.length, 0), [visibleGroups])
 
   function applyPreset(p) { const [s, e] = p.range(); setStart(s); setEnd(e) }
@@ -137,11 +146,13 @@ export default function Reports() {
   // The export container has dir="rtl" (see docs.js renderSpecToCanvas), so
   // the browser itself places the first column at the rightmost position —
   // the array must be in natural reading order (name first), not reversed.
+  const showCarColumn = Number(carAllowance) > 0
   const deptTableColumns = [
     { header: 'الموظف', key: 'name', align: 'right' },
     { header: 'الأيام', key: 'days', align: 'left' },
     { header: 'إضافي (يوم)', key: 'ot', align: 'left' },
     { header: 'الأجر اليومي', key: 'daily', align: 'left' },
+    ...(showCarColumn ? [{ header: 'أجرة سيارة', key: 'car', align: 'left' }] : []),
     { header: 'الإجمالي', key: 'wage', align: 'left' },
   ]
 
@@ -181,9 +192,9 @@ export default function Reports() {
           type: 'table',
           columns: deptTableColumns,
           rows: g.rows.map(r => ({
-            name: r.name, days: r.days, ot: r.ot.toFixed(2), daily: money(r.daily), wage: money(r.wage),
+            name: r.name, days: r.days, ot: r.ot.toFixed(2), daily: money(r.daily), car: money(r.car || 0), wage: money(r.wage),
           })),
-          totals: { name: `مجموع ${g.name}`, days: g.totals.days, ot: g.totals.ot.toFixed(2), daily: '', wage: money(g.totals.wage) },
+          totals: { name: `مجموع ${g.name}`, days: g.totals.days, ot: g.totals.ot.toFixed(2), daily: '', car: money(g.totals.car), wage: money(g.totals.wage) },
         })
       })
 
@@ -197,10 +208,11 @@ export default function Reports() {
             { header: 'الموظفون', key: 'count', align: 'left' },
             { header: 'الأيام', key: 'days', align: 'left' },
             { header: 'إضافي (يوم)', key: 'ot', align: 'left' },
+            ...(showCarColumn ? [{ header: 'أجرة سيارة', key: 'car', align: 'left' }] : []),
             { header: 'الإجمالي', key: 'wage', align: 'left' },
           ],
-          rows: visibleGroups.map(g => ({ name: g.name, count: g.rows.length, days: g.totals.days, ot: g.totals.ot.toFixed(2), wage: money(g.totals.wage) })),
-          totals: { name: 'المجموع الكلي', count: visibleRowCount, days: grandTotals.days, ot: grandTotals.ot.toFixed(2), wage: money(grandTotals.wage) },
+          rows: visibleGroups.map(g => ({ name: g.name, count: g.rows.length, days: g.totals.days, ot: g.totals.ot.toFixed(2), car: money(g.totals.car), wage: money(g.totals.wage) })),
+          totals: { name: 'المجموع الكلي', count: visibleRowCount, days: grandTotals.days, ot: grandTotals.ot.toFixed(2), car: money(grandTotals.car), wage: money(grandTotals.wage) },
         })
       }
 
@@ -227,10 +239,11 @@ export default function Reports() {
           { header: 'الأيام', key: 'days', align: 'right' },
           { header: 'أيام إضافية', key: 'ot', numFmt: '0.00', align: 'right' },
           { header: 'الأجر اليومي', key: 'daily', numFmt: '#,##0.00', align: 'right' },
+          ...(showCarColumn ? [{ header: 'أجرة سيارة', key: 'car', numFmt: '#,##0.00', align: 'right' }] : []),
           { header: 'إجمالي الراتب', key: 'wage', numFmt: '#,##0.00', align: 'right' },
         ],
-        rows: g.rows.map(r => ({ name: r.name, days: r.days, ot: r.ot, daily: r.daily, wage: r.wage })),
-        totals: { name: 'الإجمالي', days: g.totals.days, ot: g.totals.ot, wage: g.totals.wage },
+        rows: g.rows.map(r => ({ name: r.name, days: r.days, ot: r.ot, daily: r.daily, car: r.car || 0, wage: r.wage })),
+        totals: { name: 'الإجمالي', days: g.totals.days, ot: g.totals.ot, car: g.totals.car, wage: g.totals.wage },
       }))
       const file = await docs.xlsx({ sheets: sheets.length ? sheets : [{ name: 'الرواتب', columns: deptTableColumns, rows: [] }] })
       await download.saveFile(file, `payroll-${dept === 'all' ? 'all' : dept}-${start}_${end}.xlsx`)
@@ -260,6 +273,12 @@ export default function Reports() {
             </select>
           </label>
         </div>
+        <label className="flex items-center gap-2 text-sm text-white/60">
+          أجرة سيارة (اختياري)
+          <input type="number" inputMode="decimal" value={carAllowance} onChange={e => setCarAllowance(e.target.value)}
+            placeholder="0" className="w-28 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm outline-none [color-scheme:dark]" />
+          <span className="text-xs text-white/35">تُضاف مرة واحدة لكل موظف في {dept === 'all' ? 'كل الأقسام' : `قسم "${dept}"`} — لا تُحفظ، تُدخل مع كل تقرير</span>
+        </label>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -291,23 +310,27 @@ export default function Reports() {
                 <span className="text-sm font-bold text-white">{g.name}</span>
                 <span className="text-xs text-white/40">{g.rows.length} موظف</span>
               </div>
-              <div className="grid grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr] gap-1.5 px-4 py-1.5 text-[11px] text-white/40">
-                <span>الموظف</span><span className="text-right">الأيام</span><span className="text-right">إضافي (يوم)</span><span className="text-right">اليومي</span><span className="text-right">الإجمالي</span>
+              <div className={`grid ${showCarColumn ? 'grid-cols-[1.1fr_.4fr_.5fr_.6fr_.6fr_.7fr]' : 'grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr]'} gap-1.5 px-4 py-1.5 text-[11px] text-white/40`}>
+                <span>الموظف</span><span className="text-right">الأيام</span><span className="text-right">إضافي (يوم)</span><span className="text-right">اليومي</span>
+                {showCarColumn && <span className="text-right">سيارة</span>}
+                <span className="text-right">الإجمالي</span>
               </div>
               {g.rows.map((r, i) => (
-                <div key={i} className="grid grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr] gap-1.5 px-4 py-1.5 text-sm border-t border-white/5">
+                <div key={i} className={`grid ${showCarColumn ? 'grid-cols-[1.1fr_.4fr_.5fr_.6fr_.6fr_.7fr]' : 'grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr]'} gap-1.5 px-4 py-1.5 text-sm border-t border-white/5`}>
                   <span className="text-white/90 truncate">{r.name}</span>
                   <span className="text-right text-white/70 tabular-nums">{r.days}</span>
                   <span className="text-right text-amber-400 tabular-nums">{r.ot > 0 ? r.ot.toFixed(2) : '—'}</span>
                   <span className="text-right text-white/60 tabular-nums">{money(r.daily)}</span>
+                  {showCarColumn && <span className="text-right text-emerald-400 tabular-nums">{r.car > 0 ? money(r.car) : '—'}</span>}
                   <span className="text-right text-white font-semibold tabular-nums">{money(r.wage)}</span>
                 </div>
               ))}
-              <div className="grid grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr] gap-1.5 px-4 py-2 text-sm bg-white/5 border-t border-white/10">
+              <div className={`grid ${showCarColumn ? 'grid-cols-[1.1fr_.4fr_.5fr_.6fr_.6fr_.7fr]' : 'grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr]'} gap-1.5 px-4 py-2 text-sm bg-white/5 border-t border-white/10`}>
                 <span className="text-white/80 font-semibold">مجموع القسم</span>
                 <span className="text-right text-white/70 tabular-nums">{g.totals.days}</span>
                 <span className="text-right text-amber-400 tabular-nums">{g.totals.ot.toFixed(2)}</span>
                 <span />
+                {showCarColumn && <span className="text-right text-emerald-400 tabular-nums">{money(g.totals.car)}</span>}
                 <span className="text-right text-cyan-300 font-bold tabular-nums">{money(g.totals.wage)}</span>
               </div>
             </div>
