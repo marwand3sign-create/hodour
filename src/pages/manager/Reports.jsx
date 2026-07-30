@@ -190,7 +190,7 @@ export default function Reports() {
           rows: g.rows.map(r => ({
             name: r.name, days: r.days, ot: r.ot.toFixed(2), daily: money(r.daily), wage: money(r.wage),
           })),
-          totals: { name: `مجموع ${g.name}`, days: g.totals.days, ot: g.totals.ot.toFixed(2), daily: '', wage: money(g.totals.wage) },
+          totals: { name: `مجموع ${g.name}`, days: '', ot: '', daily: '', wage: money(g.totals.wage) },
         })
       })
 
@@ -207,7 +207,7 @@ export default function Reports() {
             { header: 'الإجمالي', key: 'wage', align: 'left' },
           ],
           rows: visibleGroups.map(g => ({ name: g.name, count: g.rows.length, days: g.totals.days, ot: g.totals.ot.toFixed(2), wage: money(g.totals.wage) })),
-          totals: { name: 'المجموع الكلي', count: visibleRowCount, days: grandTotals.days, ot: grandTotals.ot.toFixed(2), wage: money(grandTotals.wage) },
+          totals: { name: 'المجموع الكلي', count: '', days: '', ot: '', wage: money(grandTotals.wage) },
         })
       }
 
@@ -342,23 +342,18 @@ export default function Reports() {
                   <span className="text-right text-white font-semibold tabular-nums">{money(r.wage)}</span>
                 </div>
               ))}
-              <div className="grid grid-cols-[1.3fr_.5fr_.6fr_.7fr_.8fr] gap-1.5 px-4 py-2 text-sm bg-white/5 border-t border-white/10">
+              <div className="flex items-center justify-between px-4 py-2 text-sm bg-white/5 border-t border-white/10">
                 <span className="text-white/80 font-semibold">مجموع القسم</span>
-                <span className="text-right text-white/70 tabular-nums">{g.totals.days}</span>
-                <span className="text-right text-amber-400 tabular-nums">{g.totals.ot.toFixed(2)}</span>
-                <span />
-                <span className="text-right text-cyan-300 font-bold tabular-nums">{money(g.totals.wage)}</span>
+                <span className="text-cyan-300 font-bold tabular-nums">{money(g.totals.wage)}</span>
               </div>
             </div>
           ))}
 
           {visibleGroups.length > 1 && (
             <div className="cn-glass rounded-2xl overflow-hidden border border-cyan-400/20">
-              <div className="grid grid-cols-[1.3fr_.5fr_.6fr_.8fr] gap-1.5 px-4 py-2.5 text-sm bg-cyan-400/10">
+              <div className="flex items-center justify-between px-4 py-2.5 text-sm bg-cyan-400/10">
                 <span className="text-white font-bold">المجموع الكلي</span>
-                <span className="text-right text-white/70 tabular-nums">{grandTotals.days}</span>
-                <span className="text-right text-amber-400 tabular-nums">{grandTotals.ot.toFixed(2)}</span>
-                <span className="text-right text-cyan-300 font-bold tabular-nums">{money(grandTotals.wage)}</span>
+                <span className="text-cyan-300 font-bold tabular-nums">{money(grandTotals.wage)}</span>
               </div>
             </div>
           )}
