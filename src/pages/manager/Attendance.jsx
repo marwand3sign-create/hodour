@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert, Pencil, CalendarPlus, Loader2, Check, LogOut } from 'lucide-react'
+import { MapPin, Trash2, ScanFace, CalendarDays, X, ShieldAlert, Pencil, CalendarPlus, Loader2, Check, LogOut, Search } from 'lucide-react'
 import { useLiveShared } from '../../lib/useLive'
 import { db } from '../../lib/db'
 import { groupId, todayStr, fmtTime, DEFAULT_SHIFT, resolveShift, shiftHours, hoursBetween } from '../../store'
@@ -267,10 +267,19 @@ function EditRecordModal({ r, onClose }) {
 
 function AddExtraDayModal({ employees, defaultDate, onClose }) {
   const [userId, setUserId] = useState('')
+  const [query, setQuery] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [date, setDate] = useState(defaultDate)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const activeEmployees = employees.filter(e => !e.deleted)
+  const selected = activeEmployees.find(e => e.userId === userId)
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? activeEmployees.filter(e => (e.fullName || '').toLowerCase().includes(q) || (e.department || '').toLowerCase().includes(q))
+    : activeEmployees
 
   async function save() {
     const emp = employees.find(e => e.userId === userId)
@@ -309,13 +318,35 @@ function AddExtraDayModal({ employees, defaultDate, onClose }) {
         <p className="text-xs text-white/45 mb-4">يُضاف كيوم كامل بدون ساعات عمل مرتبطة به — يُحتسب في التقارير براتب اليوم الإضافي (وليس الراتب اليومي العادي).</p>
         <div className="space-y-3">
           <ModalField label="الموظف">
-            <select value={userId} onChange={e => setUserId(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50">
-              <option value="" style={{ backgroundColor: '#0b1220' }}>— اختر —</option>
-              {employees.filter(e => !e.deleted).map(e => (
-                <option key={e.userId} value={e.userId} style={{ backgroundColor: '#0b1220' }}>{e.fullName || e.userId}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/35 pointer-events-none" />
+              <input
+                value={pickerOpen ? query : (selected?.fullName || query)}
+                onChange={e => { setQuery(e.target.value); setUserId(''); setPickerOpen(true) }}
+                onFocus={() => { setPickerOpen(true); setQuery('') }}
+                placeholder="ابحث بالاسم أو القسم…"
+                className="w-full bg-white/5 border border-white/10 rounded-xl pr-10 pl-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50"
+              />
+              {pickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setPickerOpen(false)} />
+                  <div className="absolute z-20 mt-1.5 w-full max-h-52 overflow-y-auto cn-glass rounded-xl border border-white/10 shadow-xl">
+                    {filtered.length === 0 ? (
+                      <div className="px-3 py-3 text-sm text-white/40 text-center">لا نتائج</div>
+                    ) : (
+                      filtered.map(e => (
+                        <button key={e.userId} type="button"
+                          onClick={() => { setUserId(e.userId); setQuery(''); setPickerOpen(false); setError('') }}
+                          className="w-full text-right px-3 py-2.5 text-sm text-white/85 hover:bg-cyan-400/10 border-b border-white/5 last:border-0">
+                          {e.fullName || e.userId}
+                          {e.department && <span className="text-white/40 text-xs"> · {e.department}</span>}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </ModalField>
           <ModalField label="التاريخ">
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
