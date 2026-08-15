@@ -68,7 +68,12 @@ export default function App() {
         fullScreen
         appName="Hudour"
         bgClassName="cn-aurora"
-        ownerSignIn={false}
+        // Hidden by default (this system is meant to be run day-to-day via a
+        // handle+PIN manager seat, not the owner's email login) — a
+        // deployment can opt back in with VITE_SHOW_OWNER_LOGIN=true if that
+        // seat isn't set up yet or the PIN was lost and the owner needs a
+        // way back in without touching the database by hand.
+        ownerSignIn={import.meta.env.VITE_SHOW_OWNER_LOGIN === 'true'}
         brand={
           <div className="flex flex-col items-center gap-3 mb-2">
             <img src={EMBLEM} alt="Hudour" className="w-24 h-24 drop-shadow-[0_0_25px_rgba(56,189,248,0.5)]" />

@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "Skill(run)",
-      "Skill(run:*)"
+      "Skill(run:*)",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__confirm_cost",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__create_project",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__list_projects",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__pause_project",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__get_cost",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__apply_migration",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__deploy_edge_function",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__get_project_url",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__get_publishable_keys",
+      "mcp__eeb9cb33-b135-477f-b630-047a111bb9eb__execute_sql",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git -c user.email=\"local@local\" -c user.name=\"local\" commit -q -m \"feat: gate owner email-login button behind VITE_SHOW_OWNER_LOGIN, opt-in per deployment\")",
+      "Bash(git push *)"
     ]
   }
 }
