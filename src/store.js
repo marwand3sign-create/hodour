@@ -1,6 +1,6 @@
 import { team } from './lib/team'
 
-export const EMBLEM = 'https://api.whacka.app/storage/v1/object/public/app-images/5682ec9c-0981-4d03-8703-288cf27f4803/d2adf5a0-4856-46e9-aec2-9be6eff30a9d.png'
+export const EMBLEM = '/emblem.svg'
 
 export const ROLES = [
   { name: 'employee', label: 'موظف' },
