@@ -55,6 +55,7 @@ export default function Kiosk() {
   const ctxRef = useRef({ shift: DEFAULT_SHIFT, departments: [], records: [], geo: null })
   const queueRef = useRef([])
   const recentRef = useRef(new Map()) // userId → time recorded on this device
+  const alreadyShownRef = useRef(new Map()) // userId → when we last showed "already recorded"
   const syncingRef = useRef(false)
   const syncAgainRef = useRef(false)
 
@@ -292,11 +293,21 @@ export default function Kiosk() {
 
       const c = classify(rank(r.face.descriptor, rosterRef.current))
 
-      // The worker we just recorded is still standing there → skip quietly.
+      // Already recorded in the last couple of minutes → tell them whether
+      // it was their clock-in or clock-out (big card once, then a quiet
+      // banner while they're still standing there so the next person can step in).
       if (c.kind === 'match' && justRecorded(c.person.userId)) {
         framesRef.current = []
-        setStatus({ kind: 'done', person: c.person })
-        await sleep(250)
+        const { open, lastAt } = stateOf(c.person.userId)
+        const action = open ? 'in' : 'out'
+        const shownAt = alreadyShownRef.current.get(c.person.userId) || 0
+        if (Date.now() - shownAt > 8000) {
+          alreadyShownRef.current.set(c.person.userId, Date.now())
+          greet({ already: true, person: c.person, action, at: lastAt })
+        } else {
+          setStatus({ kind: 'done', person: c.person, action })
+          await sleep(250)
+        }
         continue
       }
 
@@ -492,7 +503,7 @@ function Overlay({ status }) {
     case 'scanning':
       return <div className={`${box} bg-cyan-500/25 text-cyan-100`}><Loader2 className="inline ml-2 animate-spin" size={18} />جارٍ التعرف…</div>
     case 'done':
-      return <div className={`${box} bg-emerald-600/30 text-emerald-100`}><CheckCircle2 className="inline ml-2" size={18} />تم تسجيل {status.person?.fullName?.split(' ')[0]} — التالي تفضّل</div>
+      return <div className={`${box} bg-emerald-600/30 text-emerald-100`}><CheckCircle2 className="inline ml-2" size={18} />{status.person?.fullName?.split(' ')[0]}: {status.action === 'out' ? 'تم تسجيل الخروج مسبقًا' : 'تم تسجيل الدخول مسبقًا'} — التالي تفضّل</div>
     case 'ambiguous':
       return <div className={`${box} bg-amber-500/30 text-amber-100`}>اختر اسمك من القائمة</div>
     default:
@@ -513,6 +524,16 @@ function Greeting({ g }) {
   }
   const { person, action } = g
   const first = (person.fullName || '').split(' ')[0]
+  if (g.already) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6 bg-slate-900/85">
+        <CheckCircle2 size={56} className="text-amber-300" />
+        <div className="text-2xl font-display font-bold">{first}</div>
+        <div className="text-xl text-amber-200">{action === 'out' ? 'تم تسجيل الخروج مسبقًا' : 'تم تسجيل الدخول مسبقًا'}</div>
+        {g.at > 0 && <div className="text-white/60 text-sm">الساعة {fmtTime(new Date(g.at).toISOString())}</div>}
+      </div>
+    )
+  }
   return (
     <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6 ${action === 'out' ? 'bg-indigo-950/80' : 'bg-emerald-950/80'}`}>
       {action === 'out' ? <LogOut size={56} className="text-indigo-300" /> : <LogIn size={56} className="text-emerald-300" />}
