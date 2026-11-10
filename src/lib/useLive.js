@@ -20,6 +20,7 @@ const TABLE = {
   locations: 'locations',
   settings: 'settings',
   notifications: 'notifications',
+  kioskDevices: 'kiosk_devices',
 }
 
 let channelSeq = 0

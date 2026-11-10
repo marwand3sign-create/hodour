@@ -46,6 +46,7 @@ const TABLE = {
   locations: 'locations',
   settings: 'settings',
   notifications: 'notifications',
+  kioskDevices: 'kiosk_devices',
 }
 
 // Business key each collection's upsertShared(...) 3rd arg matches against.

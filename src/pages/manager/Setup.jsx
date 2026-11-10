@@ -450,6 +450,8 @@ function ShiftSettings({ onToast }) {
         endTime: form.endTime,
         graceMinutes: Number(form.graceMinutes) || 0,
         minHoursBeforeOut: Math.max(0, Number(form.minHoursBeforeOut) || 0),
+        // Company timezone for the server-side auto clock-out (taken from the manager's device).
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Baghdad',
       }, 'shift', { groupId: gid, visibleTo: 'group' })
       onToast?.('تم حفظ أوقات الدوام')
     } catch (e) { setError('تعذر الحفظ: ' + (e?.message || e)) }

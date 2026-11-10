@@ -135,6 +135,8 @@ export default defineConfig({
     }),
   ],
   base: process.env.VITE_BASE || '/',
+  // Build stamp shown on the manager's gate-device status card.
+  define: { __APP_BUILD__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || new Date().toISOString().slice(0, 16)) },
   cacheDir: './.vite',
   resolve: {
     preserveSymlinks: true,

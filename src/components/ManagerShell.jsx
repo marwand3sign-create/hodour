@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
-import { LayoutDashboard, ClipboardList, Users, Settings2, FileBarChart, LogOut, UserPlus, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Users, Settings2, FileBarChart, LogOut, UserPlus, ShieldAlert, CalendarCheck } from 'lucide-react'
 import { auth } from '../lib/auth'
 import { team } from '../lib/team'
 import { EMBLEM } from '../store'
@@ -12,11 +12,13 @@ import Staff from '../pages/manager/Staff'
 import Setup from '../pages/manager/Setup'
 import Reports from '../pages/manager/Reports'
 import Alerts from '../pages/manager/Alerts'
+import Today from '../pages/manager/Today'
 
 const TABS = [
   { to: '/dashboard', label: 'الرئيسية', icon: LayoutDashboard },
+  { to: '/today', label: 'اليوم', icon: CalendarCheck },
   { to: '/attendance', label: 'الحضور', icon: ClipboardList },
-  { to: '/alerts', label: 'التنبيهات', icon: ShieldAlert },
+  { to: '/alerts', label: 'المراجعة', icon: ShieldAlert },
   { to: '/staff', label: 'الموظفون', icon: Users },
   { to: '/setup', label: 'الإعدادات', icon: Settings2 },
   { to: '/reports', label: 'التقارير', icon: FileBarChart },
@@ -94,6 +96,7 @@ export default function ManagerShell() {
           <div className="max-w-6xl mx-auto w-full px-4 md:px-8 py-5">
             <Routes>
               <Route path="/dashboard" element={<Dashboard openRoster={openRoster} canManage={canManage} />} />
+              <Route path="/today" element={<Today />} />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/staff" element={<Staff openRoster={openRoster} canManage={canManage} />} />

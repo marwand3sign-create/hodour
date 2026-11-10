@@ -40,7 +40,8 @@ export default function Reports() {
         db.selectShared('settings', { key: 'company' }, { limit: 1 }),
         db.selectShared('departments', {}, { limit: 200 }),
       ])
-      setEmployees(emps); setRecords(recs)
+      // Records the manager marked ✗ wrong on the review page don't count.
+      setEmployees(emps); setRecords((recs || []).filter(r => r.reviewStatus !== 'rejected'))
       setDeptRows(depts || [])
       if (comp[0]) setCompany({ name: comp[0].name || '' })
     } catch (e) { /* noop */ }

@@ -6,6 +6,7 @@ import { auth } from '../../lib/auth'
 import { storage } from '../../lib/storage'
 import { offlineQueue } from '../../lib/offlineQueue'
 import { localCache, isNetworkError } from '../../lib/localCache'
+import { chime, say, unlock as unlockSound } from '../../lib/sound'
 import { loadModels, quickDetect, analyzeFrame, rank, classify, createBlinkDetector, scoreFromDistance } from '../../lib/faceId'
 import { EMBLEM, todayStr, fmtTime, fmtDateLong, hoursBetween, shiftHours, lateMinutes, resolveShift, DEFAULT_SHIFT, distanceMeters, clockOutAllowedAt } from '../../store'
 
@@ -40,6 +41,7 @@ const NEXT_READY_MS = 1200 // scanning resumes after this (overlaps the greeting
 const REPEAT_GUARD_MS = 2 * 60 * 1000 // same worker again within 2 min → ignored
 const MIN_FACE_PX = 80
 const ROSTER_KEY = 'kiosk:roster'
+const HEARTBEAT_MS = 60 * 1000
 
 export default function Kiosk() {
   const videoRef = useRef(null)
@@ -180,10 +182,35 @@ export default function Kiosk() {
         await loadContext().catch(() => {})
         await refreshQueue()
       } while (syncAgainRef.current && navigator.onLine)
+      heartbeat()
     } finally {
       syncingRef.current = false
       setSyncing(false)
     }
+  }
+
+  // ---- device status for the manager (last seen, waiting records) ---------
+  function deviceName() {
+    return auth.getCurrentUser()?.displayName || 'جهاز البوابة'
+  }
+  async function heartbeat() {
+    if (!navigator.onLine) return
+    const me = auth.getCurrentUser()
+    if (!me) return
+    const q = queueRef.current
+    try {
+      await supabase.from('kiosk_devices').upsert({
+        user_id: me.id,
+        name: deviceName(),
+        last_seen: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        pending: q.length,
+        failed: q.filter((i) => i.failedAt).length,
+        roster_count: rosterRef.current.filter((p) => p.faceDescriptors?.length).length,
+        location_status: ctxRef.current.geo?.status || null,
+        app_version: __APP_BUILD__,
+      }, { onConflict: 'user_id' })
+    } catch { /* best effort */ }
   }
 
   // ---- who is in right now (server + not-yet-synced local actions) ---------
@@ -246,6 +273,7 @@ export default function Kiosk() {
         distance: g.distance ?? null, locationName: g.locationName || 'جهاز البوابة',
         faceVerified: true, faceMatchScore: score, faceMismatch: !!flagged,
         status: 'in', gpsSuspicious: false, gpsFlagReason: geoReason,
+        deviceName: deviceName(),
       }
       item = { localId: crypto.randomUUID(), kind: 'clockIn', createdAt: Date.now(), payload, blob, employeeUserId: person.userId }
       result = { action: 'in', late: payload.lateMinutes }
@@ -266,6 +294,11 @@ export default function Kiosk() {
 
   function greet(g) {
     clearTimeout(greetTimerRef.current)
+    const first = (g.person?.fullName || '').split(' ')[0]
+    if (g.error || g.unknown) chime('error')
+    else if (g.already) { chime('already'); say(g.action === 'out' ? `${first}، تم تسجيل خروجك مسبقًا` : `${first}، تم تسجيل دخولك مسبقًا`) }
+    else if (g.action === 'out') { chime('out'); say(`مع السلامة ${first}`) }
+    else { chime('in'); say(`مرحبًا ${first}`) }
     setGreeting(g)
     setStatus({ kind: 'idle' })
     framesRef.current = []
@@ -396,6 +429,10 @@ export default function Kiosk() {
     const refresh = setInterval(() => { loadRoster(); loadContext().catch(() => {}); syncQueue() }, 5 * 60 * 1000)
     const geoTimer = setInterval(checkGeo, 10 * 60 * 1000)
     const retry = setInterval(() => { if (queueRef.current.length) syncQueue() }, 30 * 1000)
+    const beat = setInterval(heartbeat, HEARTBEAT_MS)
+    // Browsers only allow sound after a tap — the first touch on the screen enables it.
+    const enableSound = () => unlockSound()
+    window.addEventListener('pointerdown', enableSound)
     const on = () => { setOnline(true); syncQueue(); loadRoster() }
     const off = () => setOnline(false)
     // Tablet woken up / app brought back to the front → push anything waiting.
@@ -406,7 +443,8 @@ export default function Kiosk() {
     return () => {
       runRef.current = false
       stream?.getTracks().forEach((t) => t.stop())
-      ;[tick, refresh, geoTimer, retry].forEach(clearInterval)
+      ;[tick, refresh, geoTimer, retry, beat].forEach(clearInterval)
+      window.removeEventListener('pointerdown', enableSound)
       clearTimeout(greetTimerRef.current)
       window.removeEventListener('online', on)
       window.removeEventListener('offline', off)
