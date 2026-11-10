@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { X, UserPlus, KeyRound, UserX, UserCheck, Copy, Check, Loader2, ShieldCheck, Pencil } from 'lucide-react'
+import { X, UserPlus, KeyRound, UserX, UserCheck, Copy, Check, Loader2, ShieldCheck, Pencil, ScanFace, ChevronDown, Search } from 'lucide-react'
 import { team } from '../lib/team'
 import { db } from '../lib/db'
 import { ROLES, groupId } from '../store'
+import FaceEnroll from './FaceEnroll'
 
 const normHandle = (s) => (s || '').toLowerCase().trim().replace(/[^a-z0-9_]/g, '')
 const roleLabel = (name) => ROLES.find(r => r.name === name)?.label || name
@@ -10,6 +11,8 @@ const roleLabel = (name) => ROLES.find(r => r.name === name)?.label || name
 export default function RosterAdmin({ onClose }) {
   const [members, setMembers] = useState(null)
   const [err, setErr] = useState('')
+  const [listOpen, setListOpen] = useState(false)
+  const [query, setQuery] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -38,15 +41,29 @@ export default function RosterAdmin({ onClose }) {
         <AddForm onCreated={load} />
 
         <div className="mt-5">
-          <div className="text-xs text-white/40 mb-2">الموظفون</div>
+          {/* Existing accounts (reset PIN / suspend) — folded away so adding a new
+              employee isn't buried under the whole staff list. */}
+          <button onClick={() => setListOpen(o => !o)} className="w-full flex items-center justify-between text-sm text-white/60 cn-glass rounded-xl px-3.5 py-2.5 mb-2">
+            <span>الحسابات الحالية {members ? `(${members.length})` : ''} — تغيير الرقم السري أو الإيقاف</span>
+            <ChevronDown size={16} className={listOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          </button>
           {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-2">{err}</div>}
-          {!members ? (
+          {!listOpen ? null : !members ? (
             <div className="flex justify-center py-8 text-white/40"><Loader2 className="animate-spin" size={20} /></div>
           ) : members.length === 0 ? (
             <div className="cn-glass rounded-2xl p-6 text-center text-white/45 text-sm">لا يوجد موظفون بعد. أنشئ أول حساب من الأعلى.</div>
           ) : (
-            <div className="cn-glass rounded-2xl divide-y divide-white/5">
-              {members.map(m => <MemberRow key={m.userId} member={m} onChanged={load} />)}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/35" />
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="ابحث بالاسم أو اسم المستخدم…"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pr-9 pl-3 py-2 text-white text-sm outline-none focus:border-cyan-400/50" />
+              </div>
+              <div className="cn-glass rounded-2xl divide-y divide-white/5">
+                {members
+                  .filter(m => { const q = query.trim().toLowerCase(); return !q || `${m.displayName || ''} ${m.handle || ''}`.toLowerCase().includes(q) })
+                  .map(m => <MemberRow key={m.userId} member={m} onChanged={load} />)}
+              </div>
             </div>
           )}
         </div>
@@ -63,6 +80,8 @@ function AddForm({ onCreated }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [created, setCreated] = useState(null)
+  const [withFace, setWithFace] = useState(true)
+  const [enroll, setEnroll] = useState(null) // { profile, name, others }
 
   async function submit() {
     setErr('')
@@ -75,20 +94,31 @@ function AddForm({ onCreated }) {
     try {
       const res = await team.createMember({ handle: h, displayName: name, role, password: pin || undefined })
       // Store the name as the employee profile so it shows in attendance + reports right away.
+      let profile = null
       try {
         const gid = await groupId()
-        await db.upsertShared('employees', {
+        profile = await db.upsertShared('employees', {
           userId: res.userId, fullName: name, department: '', jobTitle: '',
           dailyWage: 0, overtimeRate: 0, active: true,
         }, res.userId, { groupId: gid, visibleTo: 'user:' + res.userId })
       } catch { /* profile can also be filled later from الموظفون */ }
-      setCreated({ name, handle: res.handle, pin: pin || res.tempPassword })
+      const isKiosk = role === 'kiosk'
+      setCreated({ name, handle: res.handle, pin: pin || res.tempPassword, profile: isKiosk ? null : profile })
+      // Take the face samples now, while the employee is standing here —
+      // saves calling them back later to enroll from the الموظفون page.
+      if (withFace && !isKiosk && profile?.id) await openEnroll(profile, name)
       setFullName(''); setHandle(''); setPin(''); setRole(ROLES[0]?.name || 'employee')
       onCreated?.()
     } catch (e) {
       setErr('تعذر الإنشاء: ' + (e.message || e))
     }
     setBusy(false)
+  }
+
+  async function openEnroll(profile, name) {
+    let others = []
+    try { others = await db.selectShared('employees', {}, { limit: 1000 }) } catch { /* lookalike check is best effort */ }
+    setEnroll({ profile, name, others })
   }
 
   return (
@@ -112,6 +142,12 @@ function AddForm({ onCreated }) {
             inputMode="numeric" className={inputCls + ' text-left'} placeholder="يُولَّد تلقائيًا" />
         </Field>
       </div>
+      {role !== 'kiosk' && (
+        <label className="flex items-center gap-2 text-sm text-white/75 cursor-pointer select-none">
+          <input type="checkbox" checked={withFace} onChange={e => setWithFace(e.target.checked)} className="w-4 h-4 accent-cyan-400" />
+          <ScanFace size={16} className="text-cyan-300" /> سجّل بصمة الوجه مباشرة بعد الإنشاء
+        </label>
+      )}
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{err}</div>}
       <button onClick={submit} disabled={busy}
         className="w-full py-3 rounded-xl bg-cyan-400 text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
@@ -125,8 +161,27 @@ function AddForm({ onCreated }) {
             <div>اسم المستخدم: <span className="font-semibold">{created.handle}</span></div>
             <div>الرقم السري: <code className="font-bold text-cyan-200">{created.pin}</code></div>
           </div>
-          <CopyBtn value={`اسم المستخدم: ${created.handle}\nالرقم السري: ${created.pin}`} />
+          <div className="flex flex-wrap gap-2">
+            <CopyBtn value={`اسم المستخدم: ${created.handle}\nالرقم السري: ${created.pin}`} />
+            {created.profile?.id && (
+              created.faceDone
+                ? <span className="flex items-center gap-1 text-xs text-emerald-300"><ScanFace size={14} /> بصمة الوجه مسجّلة</span>
+                : <button onClick={() => openEnroll(created.profile, created.name)} className="flex items-center gap-1 rounded-full bg-white/10 text-white px-3 py-1.5 text-xs font-semibold">
+                    <ScanFace size={14} /> تسجيل بصمة الوجه
+                  </button>
+            )}
+          </div>
         </div>
+      )}
+
+      {enroll && (
+        <FaceEnroll
+          profile={enroll.profile}
+          name={enroll.name}
+          others={enroll.others}
+          onClose={() => setEnroll(null)}
+          onSaved={() => setCreated(c => (c ? { ...c, faceDone: true } : c))}
+        />
       )}
     </div>
   )
