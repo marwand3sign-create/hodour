@@ -44,7 +44,21 @@ export function loadModels() {
   return loading
 }
 
-const detectorOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })
+// 224 is ~2x faster than 320 and plenty for a face 30-80 cm from the camera.
+const detectorOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+
+/**
+ * Cheap pass (detector only, ~10-30 ms): is there exactly one usable face?
+ * The expensive landmarks + 128-d descriptor are only computed once this says yes.
+ * → { count, box, score }
+ */
+export async function quickDetect(input) {
+  const dets = await faceapi.detectAllFaces(input, detectorOpts)
+  if (!dets.length) return { count: 0, box: null, score: 0 }
+  const main = dets.reduce((a, b) => (b.box.area > a.box.area ? b : a))
+  const others = dets.filter((d) => d !== main && d.box.area > main.box.area * 0.45)
+  return { count: 1 + others.length, box: main.box, score: main.score }
+}
 
 /**
  * Analyse one video frame. Returns

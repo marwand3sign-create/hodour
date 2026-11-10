@@ -13,8 +13,8 @@ const STEPS = [
   'ارفع ذقنك قليلًا',
   'انظر إلى الكاميرا مباشرة مرة أخرى',
 ]
-const SAMPLE_GAP_MS = 900
-const MIN_FACE_PX = 110
+const SAMPLE_GAP_MS = 450
+const MIN_FACE_PX = 90
 
 /**
  * Manager-side face enrollment for one worker: captures 5 recognition
