@@ -449,6 +449,7 @@ function ShiftSettings({ onToast }) {
         startTime: form.startTime,
         endTime: form.endTime,
         graceMinutes: Number(form.graceMinutes) || 0,
+        minHoursBeforeOut: Math.max(0, Number(form.minHoursBeforeOut) || 0),
       }, 'shift', { groupId: gid, visibleTo: 'group' })
       onToast?.('تم حفظ أوقات الدوام')
     } catch (e) { setError('تعذر الحفظ: ' + (e?.message || e)) }
@@ -482,6 +483,13 @@ function ShiftSettings({ onToast }) {
           <span className="text-xs text-white/50">مهلة السماح بالتأخير (دقائق)</span>
           <input type="number" min="0" value={form.graceMinutes} onChange={e => { setForm(f => ({ ...f, graceMinutes: e.target.value })); setError('') }}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="text-xs text-white/50">أقل مدة قبل السماح بتسجيل الخروج (ساعات)</span>
+          <input type="number" min="0" step="0.5" value={form.minHoursBeforeOut ?? ''} onChange={e => { setForm(f => ({ ...f, minHoursBeforeOut: e.target.value })); setError('') }}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-cyan-400/50 [color-scheme:dark]" />
+          <span className="block text-[11px] text-white/40">إذا مرّ العامل على جهاز البوابة قبل هذه المدة يظهر له «تم تسجيل الدخول مسبقًا» بدل تسجيل خروجه. اكتب 0 لإلغاء الحد.</span>
         </label>
 
         <div className="flex items-center gap-2 text-xs text-cyan-300 bg-cyan-400/10 rounded-lg px-3 py-2">

@@ -7,7 +7,7 @@ import { storage } from '../../lib/storage'
 import { face, cosineSimilarity, FACE_MATCH_THRESHOLD } from '../../lib/face'
 import { offlineQueue } from '../../lib/offlineQueue'
 import { isNetworkError } from '../../lib/localCache'
-import { groupId, todayStr, fmtTime, fmtDateLong, fmtClock, hoursBetween, distanceMeters, DEFAULT_SHIFT, shiftHours, lateMinutes, resolveShift, detectGpsAnomalies, GPS_FLAG_LABELS } from '../../store'
+import { clockOutAllowedAt, groupId, todayStr, fmtTime, fmtDateLong, fmtClock, hoursBetween, distanceMeters, DEFAULT_SHIFT, shiftHours, lateMinutes, resolveShift, detectGpsAnomalies, GPS_FLAG_LABELS } from '../../store'
 
 export default function ClockPage() {
   const me = auth.getCurrentUser()
@@ -305,6 +305,11 @@ export default function ClockPage() {
 
   async function clockOut() {
     if (!effectiveOpenRec || busy) return
+    const outAfter = clockOutAllowedAt(effectiveOpenRec.checkIn, shift)
+    if (Date.now() < Date.parse(outAfter)) {
+      alert(`تم تسجيل الدخول مسبقًا — يمكنك تسجيل الخروج بعد الساعة ${fmtTime(outAfter)}`)
+      return
+    }
     setBusy(true)
     try {
       const target = effectiveOpenRec

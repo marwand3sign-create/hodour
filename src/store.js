@@ -120,7 +120,19 @@ export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل'
 export const STANDARD_HOURS = 8
 
 // Default shift schedule used until the manager configures one in Setup.
-export const DEFAULT_SHIFT = { startTime: '09:00', endTime: '17:00', graceMinutes: 15 }
+export const DEFAULT_SHIFT = { startTime: '09:00', endTime: '17:00', graceMinutes: 15, minHoursBeforeOut: 4 }
+
+// Minimum hours between clock-in and clock-out (company-wide setting).
+// Scanning again before that shows "already clocked in" instead of clocking out.
+export function minHoursBeforeOut(globalShift) {
+  const v = Number(globalShift?.minHoursBeforeOut ?? DEFAULT_SHIFT.minHoursBeforeOut)
+  return Number.isFinite(v) && v > 0 ? v : 0
+}
+
+// When (ISO) a worker who clocked in at `checkInIso` may clock out.
+export function clockOutAllowedAt(checkInIso, globalShift) {
+  return new Date(Date.parse(checkInIso) + minHoursBeforeOut(globalShift) * 3600000).toISOString()
+}
 
 // Number of scheduled work hours in a shift (handles overnight shifts).
 export function shiftHours(shift) {

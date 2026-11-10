@@ -7,7 +7,7 @@ import { storage } from '../../lib/storage'
 import { offlineQueue } from '../../lib/offlineQueue'
 import { localCache, isNetworkError } from '../../lib/localCache'
 import { loadModels, quickDetect, analyzeFrame, rank, classify, createBlinkDetector, scoreFromDistance } from '../../lib/faceId'
-import { EMBLEM, todayStr, fmtTime, fmtDateLong, hoursBetween, shiftHours, lateMinutes, resolveShift, DEFAULT_SHIFT, distanceMeters } from '../../store'
+import { EMBLEM, todayStr, fmtTime, fmtDateLong, hoursBetween, shiftHours, lateMinutes, resolveShift, DEFAULT_SHIFT, distanceMeters, clockOutAllowedAt } from '../../store'
 
 /*
  * Shared gate device ("kiosk"). One account, one tablet at the site entrance:
@@ -200,6 +200,13 @@ export default function Kiosk() {
   // ---- record (instant: local queue first, upload in background) ------------
   async function record(person, { d, flagged }) {
     const { open } = stateOf(person.userId)
+    if (open) {
+      const outAfter = clockOutAllowedAt(open.checkIn, ctxRef.current.shift)
+      if (Date.now() < Date.parse(outAfter)) {
+        greet({ already: true, person, action: 'in', at: Date.parse(open.checkIn) || 0, outAfter })
+        return
+      }
+    }
     const blob = await snapshot(videoRef.current)
     const g = ctxRef.current.geo || { status: 'unknown' }
     const geoReason = g.status === 'unknown' ? 'تعذّر تحديد موقع جهاز البوابة' : null
@@ -296,14 +303,19 @@ export default function Kiosk() {
       // Already recorded in the last couple of minutes → tell them whether
       // it was their clock-in or clock-out (big card once, then a quiet
       // banner while they're still standing there so the next person can step in).
-      if (c.kind === 'match' && justRecorded(c.person.userId)) {
+      // Also covers "clocked in, but too soon to clock out" (company minimum).
+      const st = c.kind === 'match' ? stateOf(c.person.userId) : null
+      const outAfter = st?.open ? clockOutAllowedAt(st.open.checkIn, ctxRef.current.shift) : null
+      const tooEarly = !!outAfter && Date.now() < Date.parse(outAfter)
+      if (c.kind === 'match' && (tooEarly || justRecorded(c.person.userId))) {
         framesRef.current = []
-        const { open, lastAt } = stateOf(c.person.userId)
+        const { open } = st
+        const lastAt = open ? Date.parse(open.checkIn) || st.lastAt : st.lastAt
         const action = open ? 'in' : 'out'
         const shownAt = alreadyShownRef.current.get(c.person.userId) || 0
         if (Date.now() - shownAt > 8000) {
           alreadyShownRef.current.set(c.person.userId, Date.now())
-          greet({ already: true, person: c.person, action, at: lastAt })
+          greet({ already: true, person: c.person, action, at: lastAt, outAfter: tooEarly ? outAfter : null })
         } else {
           setStatus({ kind: 'done', person: c.person, action })
           await sleep(250)
@@ -531,6 +543,7 @@ function Greeting({ g }) {
         <div className="text-2xl font-display font-bold">{first}</div>
         <div className="text-xl text-amber-200">{action === 'out' ? 'تم تسجيل الخروج مسبقًا' : 'تم تسجيل الدخول مسبقًا'}</div>
         {g.at > 0 && <div className="text-white/60 text-sm">الساعة {fmtTime(new Date(g.at).toISOString())}</div>}
+        {g.outAfter && <div className="text-cyan-200 text-sm">يمكنك تسجيل الخروج بعد الساعة {fmtTime(g.outAfter)}</div>}
       </div>
     )
   }
