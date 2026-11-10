@@ -68,6 +68,7 @@ export default function Kiosk() {
   const [log, setLog] = useState([]) // last few recorded workers
   const [geo, setGeo] = useState({ status: 'checking' })
   const [pending, setPending] = useState(0)
+  const [failed, setFailed] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
 
@@ -110,6 +111,7 @@ export default function Kiosk() {
   async function refreshQueue() {
     queueRef.current = await offlineQueue.list().catch(() => [])
     setPending(queueRef.current.length)
+    setFailed(queueRef.current.filter((i) => i.failedAt).length)
   }
 
   // ---- location of the device ---------------------------------------------
@@ -168,7 +170,12 @@ export default function Kiosk() {
               await db.updateShared('attendance', targetId, { ...item.payload, outFaceSnapshot })
             }
             await offlineQueue.remove(item.localId)
-          } catch { break }
+          } catch (e) {
+            if (isNetworkError(e)) break // connection gone — keep order, retry later
+            // Server refused this one record: set it aside so every other
+            // worker's attendance still reaches the manager.
+            await offlineQueue.markFailed(item, e?.message || e).catch(() => {})
+          }
         }
         await loadContext().catch(() => {})
         await refreshQueue()
@@ -391,8 +398,11 @@ export default function Kiosk() {
     const retry = setInterval(() => { if (queueRef.current.length) syncQueue() }, 30 * 1000)
     const on = () => { setOnline(true); syncQueue(); loadRoster() }
     const off = () => setOnline(false)
+    // Tablet woken up / app brought back to the front → push anything waiting.
+    const wake = () => { if (document.visibilityState === 'visible') { setOnline(navigator.onLine); syncQueue(); loadRoster() } }
     window.addEventListener('online', on)
     window.addEventListener('offline', off)
+    document.addEventListener('visibilitychange', wake)
     return () => {
       runRef.current = false
       stream?.getTracks().forEach((t) => t.stop())
@@ -400,6 +410,7 @@ export default function Kiosk() {
       clearTimeout(greetTimerRef.current)
       window.removeEventListener('online', on)
       window.removeEventListener('offline', off)
+      document.removeEventListener('visibilitychange', wake)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -429,6 +440,11 @@ export default function Kiosk() {
           {pending > 0 && (
             <span className="flex items-center gap-1 text-amber-300">
               {syncing ? <CloudUpload size={14} className="animate-pulse" /> : <CloudOff size={14} />} {pending}
+            </span>
+          )}
+          {failed > 0 && (
+            <span className="flex items-center gap-1 text-red-300" title="سجلات رفضها الخادم — يعاد المحاولة تلقائيًا">
+              <AlertTriangle size={14} /> {failed}
             </span>
           )}
           {!online && <span className="flex items-center gap-1 text-amber-300"><CloudOff size={14} /> بدون إنترنت</span>}

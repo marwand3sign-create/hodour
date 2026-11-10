@@ -87,8 +87,10 @@ export default function ClockPage() {
             await db.updateShared('attendance', targetId, { ...item.payload, outFaceSnapshot })
           }
           await offlineQueue.remove(item.localId)
-        } catch {
-          break // still offline or a real failure — stop and preserve order for the next retry
+        } catch (e) {
+          if (isNetworkError(e)) break // still offline — keep order, retry later
+          // Server rejected this record: set it aside so later ones still sync.
+          await offlineQueue.markFailed(item, e?.message || e).catch(() => {})
         }
       }
     } finally {
@@ -102,6 +104,8 @@ export default function ClockPage() {
     refreshQueue()
     const onOnline = () => syncQueue()
     window.addEventListener('online', onOnline)
+    const onWake = () => { if (document.visibilityState === 'visible' && navigator.onLine) syncQueue() }
+    document.addEventListener('visibilitychange', onWake)
     if (navigator.onLine) syncQueue()
     // `online` can fire before the connection is really usable (weak signal),
     // so keep retrying while anything is still waiting.
@@ -110,7 +114,7 @@ export default function ClockPage() {
       const pending = await offlineQueue.list().catch(() => [])
       if (pending.length) syncQueue()
     }, 60000)
-    return () => { window.removeEventListener('online', onOnline); clearInterval(retry) }
+    return () => { window.removeEventListener('online', onOnline); document.removeEventListener('visibilitychange', onWake); clearInterval(retry) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

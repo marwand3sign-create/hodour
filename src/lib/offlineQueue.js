@@ -45,6 +45,12 @@ export const offlineQueue = {
 
   remove: (localId) => withStore('readwrite', (store) => { store.delete(localId) }),
 
+  // Record a non-network failure on an item (e.g. server rejected it) so it
+  // no longer blocks the items queued after it; it's retried on later syncs.
+  markFailed: (item, message) => withStore('readwrite', (store) => {
+    store.put({ ...item, attempts: (item.attempts || 0) + 1, lastError: String(message || '').slice(0, 300), failedAt: Date.now() })
+  }),
+
   // Sorted oldest-first so clockIn always replays before a clockOut that depends on it.
   list: async () => {
     const db = await openDb()
