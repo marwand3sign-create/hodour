@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // Rewrites `import { MaybeInvalid } from 'lucide-react'` into a namespace
 // import with per-icon fallback so AI-hallucinated icon names don't crash the app.
@@ -97,7 +98,42 @@ function reactHooksAutoImport() {
 }
 
 export default defineConfig({
-  plugins: [reactHooksAutoImport(), lucideSafeImport(), react()],
+  plugins: [
+    reactHooksAutoImport(),
+    lucideSafeImport(),
+    react(),
+    // Offline-first: precache the whole app shell + face-detection models so
+    // the app opens and clocks in/out with no internet at all.
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: false,
+      manifest: false, // we ship public/manifest.json ourselves
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,tflite,task,bin}', 'models/*.json', 'mediapipe/wasm/vision_wasm_internal.*'],
+        globIgnores: ['**/node_modules/**'],
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/functions\//],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        runtimeCaching: [
+          // The other WASM variants are only fetched by some browsers — cache on first use.
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/mediapipe/wasm/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'mediapipe-wasm', expiration: { maxEntries: 10 } },
+          },
+          // OpenStreetMap tiles the manager already viewed.
+          {
+            urlPattern: /^https:\/\/[abc]\.tile\.openstreetmap\.org\//,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'osm-tiles', expiration: { maxEntries: 300 } },
+          },
+        ],
+      },
+    }),
+  ],
   base: process.env.VITE_BASE || '/',
   cacheDir: './.vite',
   resolve: {

@@ -12,6 +12,11 @@
  * company), so groupId() is a fixed constant — see _supabaseClient.js.
  */
 import { supabase, GROUP_ID } from './_supabaseClient'
+import { auth } from './auth'
+import { isNetworkError } from './localCache'
+
+const MEMBER_KEY = 'hodour-member'
+const readMember = () => { try { return JSON.parse(localStorage.getItem(MEMBER_KEY)) } catch { return null } }
 
 const HANDLE_DOMAIN = 'hodour.local'
 const emailFor = (handle) => `${String(handle).trim().toLowerCase()}@${HANDLE_DOMAIN}`
@@ -32,16 +37,29 @@ export const team = {
   config: async () => ({ selfSignup: false, loginConfig: { pin: true, memberPicker: false } }),
   setLoginConfig: async () => {},
 
+  // Offline-safe: the role/name is cached after each successful lookup so a
+  // manager/worker still lands in the right screen with no internet.
   currentMember: async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-    const { data, error } = await supabase
-      .from('employees')
-      .select('role, handle, full_name')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (error || !data) return null
-    return { role: data.role, handle: data.handle, displayName: data.full_name }
+    const me = auth.getCurrentUser()
+    const cached = readMember()
+    const fallback = cached && me && cached.userId === me.id ? cached.member : null
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return fallback
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return fallback
+      const { data, error } = await supabase
+        .from('employees')
+        .select('role, handle, full_name')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (error) return isNetworkError(error) ? fallback : null
+      if (!data) return null
+      const member = { role: data.role, handle: data.handle, displayName: data.full_name }
+      try { localStorage.setItem(MEMBER_KEY, JSON.stringify({ userId: user.id, member })) } catch { /* ignore */ }
+      return member
+    } catch {
+      return fallback
+    }
   },
 
   canManage: async () => {
@@ -50,11 +68,15 @@ export const team = {
   },
 
   login: async ({ handle, password }) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailFor(handle),
-      password,
-    })
-    if (error) throw new Error('اسم المستخدم أو الرقم السري غير صحيح')
+    const OFFLINE_MSG = 'لا يوجد اتصال بالإنترنت. أول تسجيل دخول على هذا الجهاز يحتاج إنترنت، وبعدها يعمل التطبيق بدونه.'
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error(OFFLINE_MSG)
+    let data, error
+    try {
+      ({ data, error } = await supabase.auth.signInWithPassword({ email: emailFor(handle), password }))
+    } catch (e) {
+      throw new Error(isNetworkError(e) ? OFFLINE_MSG : 'تعذر تسجيل الدخول')
+    }
+    if (error) throw new Error(isNetworkError(error) || error.status === 0 ? OFFLINE_MSG : 'اسم المستخدم أو الرقم السري غير صحيح')
     return { user: data.user, role: data.user?.user_metadata?.role || 'employee' }
   },
 

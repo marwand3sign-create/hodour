@@ -5,6 +5,7 @@ export const EMBLEM = '/emblem.svg'
 export const ROLES = [
   { name: 'employee', label: 'موظف' },
   { name: 'manager', label: 'مدير', admin: true },
+  { name: 'kiosk', label: 'جهاز البوابة (بصمة وجه)' },
 ]
 
 // Explicit Arabic labels for the platform team-admin panel — passed so it always

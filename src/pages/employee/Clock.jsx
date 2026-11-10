@@ -6,6 +6,7 @@ import { auth } from '../../lib/auth'
 import { storage } from '../../lib/storage'
 import { face, cosineSimilarity, FACE_MATCH_THRESHOLD } from '../../lib/face'
 import { offlineQueue } from '../../lib/offlineQueue'
+import { isNetworkError } from '../../lib/localCache'
 import { groupId, todayStr, fmtTime, fmtDateLong, fmtClock, hoursBetween, distanceMeters, DEFAULT_SHIFT, shiftHours, lateMinutes, resolveShift, detectGpsAnomalies, GPS_FLAG_LABELS } from '../../store'
 
 export default function ClockPage() {
@@ -52,7 +53,11 @@ export default function ClockPage() {
 
   async function uploadFace(blob, tag) {
     if (!blob) return null
-    try { const { url } = await storage.upload(blob, `face-${me.id}-${tag}.jpg`); return url } catch { return null }
+    try { const { url } = await storage.upload(blob, `face-${me.id}-${tag}.jpg`); return url } catch (e) {
+      // No connection: bubble up so the action is queued (with its photo) instead of saved photo-less.
+      if (isNetworkError(e)) throw e
+      return null
+    }
   }
 
   async function refreshQueue() { setPendingQueue(await offlineQueue.list().catch(() => [])) }
@@ -98,7 +103,14 @@ export default function ClockPage() {
     const onOnline = () => syncQueue()
     window.addEventListener('online', onOnline)
     if (navigator.onLine) syncQueue()
-    return () => window.removeEventListener('online', onOnline)
+    // `online` can fire before the connection is really usable (weak signal),
+    // so keep retrying while anything is still waiting.
+    const retry = setInterval(async () => {
+      if (!navigator.onLine) return
+      const pending = await offlineQueue.list().catch(() => [])
+      if (pending.length) syncQueue()
+    }, 60000)
+    return () => { window.removeEventListener('online', onOnline); clearInterval(retry) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -256,17 +268,27 @@ export default function ClockPage() {
         gpsFlagReason: (geo.flagReasons || []).map(r => GPS_FLAG_LABELS[r]).join('، ') || null,
       }
 
-      if (!navigator.onLine) {
+      const queueClockIn = async () => {
         const localId = crypto.randomUUID()
         await offlineQueue.enqueue({ localId, kind: 'clockIn', createdAt: Date.now(), payload, blob, embedding })
         await refreshQueue()
+      }
+
+      if (!navigator.onLine) {
+        await queueClockIn()
         setBusy(false)
         return
       }
 
-      await groupId()
-      const faceSnapshot = await uploadFace(blob, Date.now())
-      await db.insertShared('attendance', { ...payload, faceSnapshot })
+      let faceSnapshot
+      try {
+        await groupId()
+        faceSnapshot = await uploadFace(blob, Date.now())
+        await db.insertShared('attendance', { ...payload, faceSnapshot })
+      } catch (e) {
+        if (isNetworkError(e)) { await queueClockIn(); setBusy(false); return } // connection dropped mid-way
+        throw e
+      }
       // First-ever check-in: keep this photo + embedding as the employee's
       // reference — every future snapshot is compared against it, and the
       // manager can visually confirm it's the same person too.
@@ -306,7 +328,7 @@ export default function ClockPage() {
         gpsFlagReason: alreadyFlagged ? target.gpsFlagReason : (outReason ? `عند الخروج: ${outReason}` : target.gpsFlagReason || null),
       }
 
-      if (!navigator.onLine) {
+      const queueClockOut = async () => {
         const localId = crypto.randomUUID()
         await offlineQueue.enqueue({
           localId, kind: 'clockOut', createdAt: Date.now(), payload, blob, embedding,
@@ -314,12 +336,21 @@ export default function ClockPage() {
           clockInLocalId: target.localId || null,
         })
         await refreshQueue()
+      }
+
+      if (!navigator.onLine || !target.id) {
+        await queueClockOut()
         setBusy(false)
         return
       }
 
-      const outFaceSnapshot = await uploadFace(blob, Date.now())
-      await db.updateShared('attendance', target.id, { ...payload, outFaceSnapshot })
+      try {
+        const outFaceSnapshot = await uploadFace(blob, Date.now())
+        await db.updateShared('attendance', target.id, { ...payload, outFaceSnapshot })
+      } catch (e) {
+        if (isNetworkError(e)) { await queueClockOut(); setBusy(false); return }
+        throw e
+      }
       await load()
     } catch (e) { alert('تعذر تسجيل الخروج: ' + (e.message || e)) }
     setBusy(false)

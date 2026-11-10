@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './_supabaseClient'
+import { localCache } from './localCache'
 
 const TABLE = {
   employees: 'employees',
@@ -49,10 +50,20 @@ export function useLiveShared(collection, opts = {}) {
         q = q.order(camelToSnake(desc ? order.slice(1) : order), { ascending: !desc })
       }
       if (limit) q = q.limit(limit)
-      const { data, error } = await q
+      const cacheKey = `live:${collection}:${order || ''}:${limit || ''}`
+      let data = null, error = null
+      try { ({ data, error } = await q) } catch (e) { error = e }
       if (!alive) return
-      if (error) { setState({ data: [], loading: false }); return }
-      setState({ data: (data || []).map(toCamel), loading: false })
+      if (error) {
+        // Offline / request failed — fall back to the last copy we saw.
+        const hit = await localCache.get(cacheKey)
+        if (!alive) return
+        setState({ data: hit || [], loading: false })
+        return
+      }
+      const rows = (data || []).map(toCamel).filter((r) => collection !== 'employees' || r.role !== 'kiosk')
+      localCache.set(cacheKey, rows)
+      setState({ data: rows, loading: false })
     }
 
     load()

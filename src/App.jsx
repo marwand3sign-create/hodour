@@ -6,6 +6,7 @@ import { social } from './lib/social'
 import TeamLogin from './components/TeamLogin'
 import ManagerShell from './components/ManagerShell'
 import EmployeeShell from './components/EmployeeShell'
+import Kiosk from './pages/kiosk/Kiosk'
 import { EMBLEM, groupId } from './store'
 
 // Force RTL + Arabic at the document level so the platform sign-in and team-admin
@@ -46,6 +47,9 @@ export default function App() {
       } else {
         const m = await team.currentMember()
         if (m && (m.role === 'manager' || m.role === 'owner' || m.role === 'admin')) r = 'manager'
+        // Shared gate device (face identification). Falls back to the login
+        // metadata so it still opens as a kiosk with no internet.
+        else if (m?.role === 'kiosk' || (!m && auth.getRole?.() === 'kiosk')) r = 'kiosk'
       }
     } catch {}
     setRole(r)
@@ -88,6 +92,8 @@ export default function App() {
   }
 
   if (!role) return <Splash text="جارٍ تجهيز مساحة العمل…" />
+
+  if (role === 'kiosk') return <Kiosk />
 
   return (
     <HashRouter>

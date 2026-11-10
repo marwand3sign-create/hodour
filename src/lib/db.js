@@ -17,6 +17,26 @@
  * generic camel/snake row mapper.
  */
 import { supabase } from './_supabaseClient'
+import { localCache, isNetworkError } from './localCache'
+
+// Read-through cache: network first, last-known copy when there is no internet.
+async function cachedRead(key, fetcher) {
+  try {
+    const rows = await fetcher()
+    localCache.set(key, rows)
+    return rows
+  } catch (err) {
+    if (isNetworkError(err)) {
+      const hit = await localCache.get(key)
+      if (hit !== undefined) return hit
+    }
+    throw err
+  }
+}
+// The shared gate device has an employees row (role 'kiosk') but isn't staff —
+// keep it out of every staff list, payroll and report.
+const withoutKiosk = (collection, rows) => (collection === 'employees' ? rows.filter((r) => r.role !== 'kiosk') : rows)
+const readKey = (kind, collection, filter, opts) => `${kind}:${collection}:${JSON.stringify(filter)}:${JSON.stringify(opts)}`
 
 const TABLE = {
   employees: 'employees',
@@ -94,25 +114,25 @@ async function upsertSettings(row, id) {
 }
 
 export const db = {
-  selectShared: async (collection, filter = {}, opts = {}) => {
+  selectShared: (collection, filter = {}, opts = {}) => cachedRead(readKey('s', collection, filter, opts), async () => {
     if (collection === 'settings') return selectSettings(filter, opts)
     let q = applyFilter(supabase.from(tableOf(collection)).select('*'), filter)
     q = applyOrder(q, opts.order)
     if (opts.limit) q = q.limit(opts.limit)
     const { data, error } = await q
     if (error) throw error
-    return (data || []).map(toCamel)
-  },
+    return withoutKiosk(collection, (data || []).map(toCamel))
+  }),
 
-  selectAllShared: async (collection, filter = {}, opts = {}) => {
+  selectAllShared: (collection, filter = {}, opts = {}) => cachedRead(readKey('a', collection, filter, opts), async () => {
     if (collection === 'settings') return selectSettings(filter, opts)
     let q = applyFilter(supabase.from(tableOf(collection)).select('*'), filter)
     q = applyOrder(q, opts.order)
     q = q.limit(opts.max || 20000)
     const { data, error } = await q
     if (error) throw error
-    return (data || []).map(toCamel)
-  },
+    return withoutKiosk(collection, (data || []).map(toCamel))
+  }),
 
   insertShared: async (collection, row, _id, _opts) => {
     if (collection === 'settings') return upsertSettings(row, row.key)

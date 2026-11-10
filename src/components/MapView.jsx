@@ -5,23 +5,13 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
+import 'leaflet/dist/leaflet.css'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
-// Leaflet CSS must be loaded for the map to render correctly
-const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-
-let cssLoaded = false
-function ensureLeafletCSS() {
-  if (cssLoaded) return
-  if (document.querySelector(`link[href="${LEAFLET_CSS}"]`)) {
-    cssLoaded = true
-    return
-  }
-  const link = document.createElement('link')
-  link.rel = 'stylesheet'
-  link.href = LEAFLET_CSS
-  document.head.appendChild(link)
-  cssLoaded = true
-}
+// Leaflet CSS is bundled (imported above) so it works offline.
+function ensureLeafletCSS() {}
 
 /**
  * @param {object} props
@@ -71,9 +61,9 @@ export default function MapView({
     // Fix Leaflet's default icon path issue with bundlers
     delete L.Icon.Default.prototype._getIconUrl
     L.Icon.Default.mergeOptions({
-      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconRetinaUrl: markerIcon2x,
+      iconUrl: markerIcon,
+      shadowUrl: markerShadow,
     })
 
     if (onMapClick) {

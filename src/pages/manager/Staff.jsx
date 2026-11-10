@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { team } from '../../lib/team'
 import { db } from '../../lib/db'
 import { groupId, money, daysInMonth } from '../../store'
+import FaceEnroll from '../../components/FaceEnroll'
 
 export default function Staff({ openRoster, canManage }) {
   const [members, setMembers] = useState([])
@@ -16,6 +17,7 @@ export default function Staff({ openRoster, canManage }) {
   const [showSuspended, setShowSuspended] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
   const [query, setQuery] = useState('')
+  const [enrolling, setEnrolling] = useState(null) // { profile, name }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -26,7 +28,7 @@ export default function Staff({ openRoster, canManage }) {
         db.selectShared('departments', {}, { limit: 200 }),
         db.selectShared('jobTitles', {}, { limit: 200 }),
       ])
-      setMembers(mem.filter(m => m.role !== 'owner'))
+      setMembers(mem.filter(m => m.role !== 'owner' && m.role !== 'kiosk'))
       const map = {}
       profs.forEach(p => { map[p.userId] = p })
       setProfiles(map)
@@ -133,7 +135,9 @@ export default function Staff({ openRoster, canManage }) {
                   <div className="text-sm font-semibold text-white truncate flex items-center gap-1.5">
                     {name}
                     {m.role === 'manager' && <ShieldCheck size={14} className="text-amber-400" title="مدير" />}
-                    {p.referencePhoto && <ScanFace size={13} className="text-emerald-400" title="تم تسجيل صورة الوجه المرجعية" />}
+                    {p.faceDescriptors?.length
+                      ? <ScanFace size={13} className="text-emerald-400" title="بصمة الوجه مسجّلة لجهاز البوابة" />
+                      : <span className="text-[10px] text-amber-300/80 font-normal">بدون بصمة وجه</span>}
                   </div>
                   <div className="text-xs text-white/45 truncate">
                     {p.jobTitle || m.role || 'موظف'}{p.department ? ` · ${p.department}` : ''}
@@ -148,6 +152,11 @@ export default function Staff({ openRoster, canManage }) {
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button onClick={() => setEditing({ member: m, profile: p })} className="text-white/40 hover:text-cyan-300 p-2" title="تعديل"><Pencil size={16} /></button>
+                  {canManage && p.id && (
+                    <button onClick={() => setEnrolling({ profile: p, name })} className={`p-2 ${p.faceDescriptors?.length ? 'text-emerald-400/70 hover:text-emerald-300' : 'text-amber-300/80 hover:text-amber-200'}`} title={p.faceDescriptors?.length ? 'إعادة تسجيل بصمة الوجه' : 'تسجيل بصمة الوجه'}>
+                      <ScanFace size={16} />
+                    </button>
+                  )}
                   {canManage && m.role !== 'manager' && (
                     <>
                       <button disabled={busy} onClick={() => suspendMember(m, name)} className="text-white/40 hover:text-amber-300 p-2 disabled:opacity-40" title="إيقاف مؤقت">
@@ -228,6 +237,16 @@ export default function Staff({ openRoster, canManage }) {
           jobTitles={jobTitles}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await load() }}
+        />
+      )}
+
+      {enrolling && (
+        <FaceEnroll
+          profile={enrolling.profile}
+          name={enrolling.name}
+          others={Object.values(profiles)}
+          onClose={() => setEnrolling(null)}
+          onSaved={load}
         />
       )}
     </div>

@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     async function assertCanTarget(userId: string) {
       const { data: target } = await admin.from('employees').select('role').eq('user_id', userId).maybeSingle()
       const targetRole = target?.role || 'employee'
-      if (!callerIsOwner && targetRole !== 'employee') {
+      if (!callerIsOwner && targetRole !== 'employee' && targetRole !== 'kiosk') {
         throw new Error('فقط المالك يقدر يدير حسابات المديرين')
       }
     }
@@ -104,6 +104,9 @@ Deno.serve(async (req) => {
       if (role === 'manager') {
         if (!callerIsOwner) return json({ error: 'فقط المالك يقدر ينشئ حسابات مدير' }, 403)
         finalRole = 'manager'
+      } else if (role === 'kiosk') {
+        // Shared gate device: recognises workers by face. Not a manager.
+        finalRole = 'kiosk'
       } else if (role && role !== 'employee') {
         return json({ error: 'دور غير صالح' }, 400)
       }
