@@ -34,8 +34,10 @@ import { EMBLEM, todayStr, fmtTime, fmtDateLong, hoursBetween, shiftHours, lateM
  */
 
 const REQUIRE_BLINK = false // true = worker must blink before recording (slower, stops printed photos)
-const CONSENSUS_FRAMES = 2
-const DECIDE_AFTER_FRAMES = 4 // full-recognition frames before falling back to "pick your name"/unknown
+// The worker must stay recognised as the same person for this long before
+// the photo is taken and the record saved (steadier match, fewer accidents).
+const HOLD_MS = 3000
+const DECIDE_AFTER_FRAMES = 8 // unclear recognition frames before falling back to "pick your name"/unknown
 const GREETING_MS = 1600 // how long the "مرحبًا فلان" card stays up
 const NEXT_READY_MS = 1200 // scanning resumes after this (overlaps the greeting fade)
 const REPEAT_GUARD_MS = 2 * 60 * 1000 // same worker again within 2 min → ignored
@@ -49,6 +51,7 @@ export default function Kiosk() {
   const busyRef = useRef(false)
   const blinkRef = useRef(createBlinkDetector())
   const framesRef = useRef([])
+  const holdRef = useRef(null) // { userId, person, start, ds:[], misses }
   const lastSeenRef = useRef(0)
   const cooldownRef = useRef(0)
   const greetTimerRef = useRef(null)
@@ -302,6 +305,7 @@ export default function Kiosk() {
     setGreeting(g)
     setStatus({ kind: 'idle' })
     framesRef.current = []
+    holdRef.current = null
     blinkRef.current.reset()
     cooldownRef.current = Date.now() + NEXT_READY_MS
     busyRef.current = false
@@ -321,14 +325,14 @@ export default function Kiosk() {
 
       if (q.count === 0) {
         if (Date.now() - lastSeenRef.current > 800) {
-          blinkRef.current.reset(); framesRef.current = []
+          blinkRef.current.reset(); framesRef.current = []; holdRef.current = null
           setStatus((s) => (s.kind === 'idle' ? s : { kind: 'idle' }))
         }
         await sleep(60)
         continue
       }
       lastSeenRef.current = Date.now()
-      if (q.count > 1) { framesRef.current = []; setStatus({ kind: 'multi' }); await sleep(100); continue }
+      if (q.count > 1) { framesRef.current = []; holdRef.current = null; setStatus({ kind: 'multi' }); await sleep(100); continue }
       if (q.box.width < MIN_FACE_PX) { setStatus({ kind: 'closer' }); await sleep(80); continue }
 
       // One close face → full recognition for this frame.
@@ -349,6 +353,7 @@ export default function Kiosk() {
       const tooEarly = !!outAfter && Date.now() < Date.parse(outAfter)
       if (c.kind === 'match' && (tooEarly || justRecorded(c.person.userId))) {
         framesRef.current = []
+        holdRef.current = null
         const { open } = st
         const lastAt = open ? Date.parse(open.checkIn) || st.lastAt : st.lastAt
         const action = open ? 'in' : 'out'
@@ -364,14 +369,31 @@ export default function Kiosk() {
       }
 
       framesRef.current.push(c)
-      const recent = framesRef.current.slice(-CONSENSUS_FRAMES)
-      const sameMatch = recent.length === CONSENSUS_FRAMES && recent.every((x) => x.kind === 'match' && x.person.userId === recent[0].person.userId)
-      if (sameMatch) {
-        busyRef.current = true
-        const avgD = recent.reduce((s, x) => s + x.d, 0) / recent.length
-        await record(recent[0].person, { d: avgD, flagged: false })
+
+      // Hold: the same worker must stay recognised for HOLD_MS (with a short
+      // countdown on screen) before we take the photo and record.
+      if (c.kind === 'match') {
+        const h = holdRef.current
+        if (!h || h.userId !== c.person.userId) {
+          holdRef.current = { userId: c.person.userId, person: c.person, start: Date.now(), ds: [c.d], misses: 0 }
+        } else {
+          h.ds.push(c.d); h.misses = 0
+        }
+        const hh = holdRef.current
+        const elapsed = Date.now() - hh.start
+        if (elapsed >= HOLD_MS && hh.ds.length >= 2) {
+          busyRef.current = true
+          holdRef.current = null
+          const avgD = hh.ds.reduce((sum, x) => sum + x, 0) / hh.ds.length
+          await record(hh.person, { d: avgD, flagged: false })
+          continue
+        }
+        setStatus({ kind: 'holding', person: hh.person, left: Math.max(1, Math.ceil((HOLD_MS - elapsed) / 1000)), progress: Math.min(1, elapsed / HOLD_MS) })
         continue
       }
+      // A frame or two that doesn't match (blur, head turn) doesn't cancel the countdown.
+      if (holdRef.current && ++holdRef.current.misses <= 2) continue
+      holdRef.current = null
       setStatus({ kind: 'scanning' })
 
       if (framesRef.current.length >= DECIDE_AFTER_FRAMES) {
@@ -566,6 +588,15 @@ function Overlay({ status }) {
       return <div className={`${box} bg-amber-500/30 text-amber-100`}>شخص واحد فقط أمام الكاميرا</div>
     case 'blink':
       return <div className={`${box} bg-cyan-500/25 text-cyan-100`}><Eye className="inline ml-2" size={18} />ارمش بعينيك</div>
+    case 'holding':
+      return (
+        <div className={`${box} bg-cyan-500/25 text-cyan-50 space-y-2`}>
+          <div className="text-base font-semibold">{status.person?.fullName} — ثبّت وجهك <span className="tabular-nums text-xl">{status.left}</span></div>
+          <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
+            <div className="h-full bg-cyan-300 transition-[width] duration-150" style={{ width: `${Math.round((status.progress || 0) * 100)}%` }} />
+          </div>
+        </div>
+      )
     case 'scanning':
       return <div className={`${box} bg-cyan-500/25 text-cyan-100`}><Loader2 className="inline ml-2 animate-spin" size={18} />جارٍ التعرف…</div>
     case 'done':
