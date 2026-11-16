@@ -17,6 +17,7 @@ export default function Dashboard({ openRoster, canManage }) {
   const [counts, setCounts] = useState({ staff: 0, departments: 0, jobTitles: 0, locations: 0 })
   const [employees, setEmployees] = useState([])
   const [shift, setShift] = useState(DEFAULT_SHIFT)
+  const [excuses, setExcuses] = useState({ leaves: [], holidays: [] })
   const { data: attendance } = useLiveShared('attendance', { order: '-createdAt', limit: 500 })
   const { data: notifications } = useLiveShared('notifications', { order: '-createdAt', limit: 20 })
 
@@ -30,6 +31,12 @@ export default function Dashboard({ openRoster, canManage }) {
         db.selectShared('settings', { key: 'shift' }, { limit: 1 }),
       ])
       setEmployees(emps)
+      // Tables arrive with migration 0011 — alerts still work without them.
+      const [leaves, holidays] = await Promise.all([
+        db.selectAllShared('leaves', {}, { max: 2000 }).catch(() => []),
+        db.selectShared('holidays', {}, { limit: 500 }).catch(() => []),
+      ])
+      setExcuses({ leaves, holidays })
       if (settings && settings[0]) setShift({ ...DEFAULT_SHIFT, ...settings[0] })
       const activeCount = emps.filter(e => !e.deleted).length
       setCounts({ staff: activeCount, departments: deps.length, jobTitles: jobs.length, locations: locs.length })
@@ -111,7 +118,7 @@ export default function Dashboard({ openRoster, canManage }) {
     return { labels: days.map(d => d.label), data: days.map(d => +(hoursByDay[d.key] || 0).toFixed(1)) }
   }, [attendance])
 
-  const alerts = useMemo(() => computeSmartAlerts(attendance, employees, shift), [attendance, employees, shift])
+  const alerts = useMemo(() => computeSmartAlerts(attendance, employees, shift, excuses), [attendance, employees, shift, excuses])
 
   const gpsFlags = useMemo(() => {
     const byName = {}

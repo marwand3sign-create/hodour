@@ -3,7 +3,8 @@ import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { db } from '../../lib/db'
 import { docs } from '../../lib/docs'
 import { download } from '../../lib/download'
-import { todayStr, money, effectiveDailyWage, fridaysInRange } from '../../store'
+import { todayStr, money, DEFAULT_SHIFT } from '../../store'
+import { computePayroll, groupByDepartment } from '../../lib/payroll'
 
 function startOfWeek() { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return todayStr(d) }
 function startOfMonth() { return todayStr().slice(0, 8) + '01' }
@@ -14,7 +15,6 @@ const PRESETS = [
   { key: 'month', label: 'هذا الشهر', range: () => [startOfMonth(), todayStr()] },
 ]
 
-const NO_DEPT = 'بدون قسم'
 
 export default function Reports() {
   const [start, setStart] = useState(startOfMonth())
@@ -27,6 +27,9 @@ export default function Reports() {
   const [employees, setEmployees] = useState([])
   const [records, setRecords] = useState([])
   const [deptRows, setDeptRows] = useState([])
+  const [leaves, setLeaves] = useState([])
+  const [holidays, setHolidays] = useState([])
+  const [globalShift, setGlobalShift] = useState(DEFAULT_SHIFT)
   const [company, setCompany] = useState({ name: '' })
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState('')
@@ -34,12 +37,18 @@ export default function Reports() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [emps, recs, comp, depts] = await Promise.all([
+      const [emps, recs, comp, depts, lvs, hols, shiftRow] = await Promise.all([
         db.selectShared('employees', {}, { limit: 500 }),
         db.selectAllShared('attendance', { date: { between: [start, end] } }, { max: 20000 }),
         db.selectShared('settings', { key: 'company' }, { limit: 1 }),
         db.selectShared('departments', {}, { limit: 200 }),
+        // Leaves/holidays tables arrive with migration 0011 — payroll still works without them.
+        db.selectAllShared('leaves', {}, { max: 5000 }).catch(() => []),
+        db.selectShared('holidays', {}, { limit: 500 }).catch(() => []),
+        db.selectShared('settings', { key: 'shift' }, { limit: 1 }).catch(() => []),
       ])
+      setLeaves(lvs || []); setHolidays(hols || [])
+      if (shiftRow?.[0]) setGlobalShift({ ...DEFAULT_SHIFT, ...shiftRow[0] })
       // Records the manager marked ✗ wrong on the review page don't count.
       setEmployees(emps); setRecords((recs || []).filter(r => r.reviewStatus !== 'rejected'))
       setDeptRows(depts || [])
@@ -49,65 +58,10 @@ export default function Reports() {
   }, [start, end])
   useEffect(() => { load() }, [load])
 
-  const wageByUser = useMemo(() => {
-    const m = {}
-    for (const e of employees) {
-      m[e.userId] = {
-        name: e.fullName, department: e.department, jobTitle: e.jobTitle,
-        wageType: e.wageType, monthlySalary: e.monthlySalary, dailyWage: e.dailyWage,
-        ot: Number(e.overtimeRate) || 0,
-      }
-    }
-    return m
-  }, [employees])
-
-  // Flat per-employee rows across the whole period
-  const flatRows = useMemo(() => {
-    const byUser = {}
-    // Monthly-salary employees must appear even with zero clock-ins in the
-    // period (they still get paid for Fridays below) — daily-wage employees
-    // are unaffected and only appear once they have a real record.
-    for (const e of employees) {
-      if (e.wageType === 'monthly') {
-        byUser[e.userId] = { name: e.fullName, department: e.department || '', days: 0, hours: 0, extraDays: 0, dates: new Set() }
-      }
-    }
-    for (const r of records) {
-      if (!r.checkOut) continue
-      const id = r.employeeUserId
-      if (!byUser[id]) byUser[id] = { name: r.employeeName, department: r.department || '', days: 0, hours: 0, extraDays: 0, dates: new Set() }
-      // A manager-added "extra day" (Attendance.jsx's يوم إضافي button) is a
-      // flat day paid at the overtime rate — not hours divided by shift
-      // length. No automatic hours→day conversion happens anywhere anymore;
-      // an extra day only exists because a manager explicitly added one.
-      if (r.isManual) {
-        byUser[id].extraDays += 1
-      } else {
-        byUser[id].days += 1
-        byUser[id].hours += Number(r.workedHours) || 0
-      }
-      byUser[id].dates.add(r.date)
-    }
-    // Fridays are a paid rest day for monthly-salary staff — credit any
-    // Friday in the period they didn't already have a record for (so a
-    // Friday they did clock in on isn't double-counted).
-    const fridays = fridaysInRange(start, end)
-    for (const [id, v] of Object.entries(byUser)) {
-      if (wageByUser[id]?.wageType !== 'monthly') continue
-      const unpaidFridays = fridays.filter(f => !v.dates.has(f)).length
-      v.days += unpaidFridays
-    }
-    return Object.entries(byUser).map(([id, v]) => {
-      const w = wageByUser[id] || { ot: 0 }
-      const dep = (w.department || v.department || '').trim() || NO_DEPT
-      const daily = effectiveDailyWage(w, start)
-      const wage = v.days * daily + v.extraDays * w.ot
-      return {
-        id, name: w.name || v.name, department: dep, jobTitle: w.jobTitle || '',
-        days: v.days, hours: v.hours, ot: v.extraDays, daily, otRate: w.ot, wage,
-      }
-    }).sort((a, b) => b.wage - a.wage)
-  }, [records, employees, wageByUser, start, end])
+  const flatRows = useMemo(
+    () => computePayroll({ employees, records, leaves, holidays, departments: deptRows, globalShift, start, end }),
+    [employees, records, leaves, holidays, deptRows, globalShift, start, end],
+  )
 
   // The dropdown must list every configured department (Setup.jsx), not just
   // ones with completed attendance in the currently selected date range —
@@ -118,18 +72,7 @@ export default function Reports() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'))
   }, [deptRows, flatRows])
 
-  // Grouped by department (used for both the "all" view and export)
-  const groups = useMemo(() => {
-    const byDept = {}
-    for (const r of flatRows) {
-      if (!byDept[r.department]) byDept[r.department] = []
-      byDept[r.department].push(r)
-    }
-    return Object.entries(byDept).map(([name, rows]) => {
-      const totals = rows.reduce((t, r) => ({ days: t.days + r.days, hours: t.hours + r.hours, ot: t.ot + r.ot, wage: t.wage + r.wage }), { days: 0, hours: 0, ot: 0, wage: 0 })
-      return { name, rows, totals }
-    }).sort((a, b) => a.name.localeCompare(b, 'ar'))
-  }, [flatRows])
+  const groups = useMemo(() => groupByDepartment(flatRows), [flatRows])
 
   const visibleGroups = useMemo(() => dept === 'all' ? groups : groups.filter(g => g.name === dept), [groups, dept])
   const grandTotals = useMemo(() => visibleGroups.reduce((t, g) => ({
@@ -141,6 +84,11 @@ export default function Reports() {
   // multiplied per employee. Re-entered fresh each report pull, never saved.
   const carAmount = Number(carAllowance) || 0
   const grandTotalWithCar = grandTotals.wage + carAmount
+
+  // Employees with any lateness / early departure / unpaid leave in the period.
+  const discipline = useMemo(() => visibleGroups.flatMap(g => g.rows)
+    .filter(r => r.lateCount > 0 || r.earlyCount > 0 || r.unpaidLeaveDays > 0)
+    .sort((a, b) => b.lateMinutes - a.lateMinutes), [visibleGroups])
 
   function applyPreset(p) { const [s, e] = p.range(); setStart(s); setEnd(e) }
 
@@ -252,6 +200,40 @@ export default function Reports() {
         rows: g.rows.map(r => ({ name: r.name, days: r.days, ot: r.ot, daily: r.daily, wage: r.wage })),
         totals: { name: 'الإجمالي', days: g.totals.days, ot: g.totals.ot, wage: g.totals.wage },
       }))
+      const flatVisible = visibleGroups.flatMap(g => g.rows)
+      sheets.unshift({
+        name: 'كشف الرواتب',
+        headerColor: '#0ea5e9',
+        columns: [
+          { header: 'الموظف', key: 'name' },
+          { header: 'القسم', key: 'department' },
+          { header: 'الوظيفة', key: 'jobTitle' },
+          { header: 'إجمالي الأيام المدفوعة', key: 'days', align: 'right' },
+          { header: 'أيام إجازة مدفوعة', key: 'leaveDays', align: 'right' },
+          { header: 'أيام عطل رسمية', key: 'holidayDays', align: 'right' },
+          { header: 'جمع مدفوعة', key: 'fridayDays', align: 'right' },
+          { header: 'أيام إضافية', key: 'ot', numFmt: '0.00', align: 'right' },
+          { header: 'الأجر اليومي', key: 'daily', numFmt: '#,##0.00', align: 'right' },
+          { header: 'إجمالي الراتب', key: 'wage', numFmt: '#,##0.00', align: 'right' },
+        ],
+        rows: flatVisible,
+        totals: { name: 'الإجمالي', wage: grandTotals.wage },
+      })
+      if (discipline.length) {
+        sheets.push({
+          name: 'التأخير والانصراف',
+          headerColor: '#f59e0b',
+          columns: [
+            { header: 'الموظف', key: 'name' },
+            { header: 'القسم', key: 'department' },
+            { header: 'مرات التأخير', key: 'lateCount', align: 'right' },
+            { header: 'دقائق التأخير', key: 'lateMinutes', align: 'right' },
+            { header: 'انصراف مبكر', key: 'earlyCount', align: 'right' },
+            { header: 'إجازات بدون راتب (يوم)', key: 'unpaidLeaveDays', align: 'right' },
+          ],
+          rows: discipline,
+        })
+      }
       if (carAmount > 0) {
         sheets.push({
           name: 'الملخص',
@@ -349,6 +331,23 @@ export default function Reports() {
               </div>
             </div>
           ))}
+
+          {discipline.length > 0 && (
+            <div className="cn-glass rounded-2xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-amber-400/10 border-b border-white/10 text-sm font-bold text-amber-200">التأخير والانصراف المبكر</div>
+              <div className="grid grid-cols-[1.4fr_.6fr_.7fr_.7fr] gap-1.5 px-4 py-1.5 text-[11px] text-white/40">
+                <span>الموظف</span><span className="text-right">تأخير (مرات)</span><span className="text-right">دقائق</span><span className="text-right">انصراف مبكر</span>
+              </div>
+              {discipline.map(r => (
+                <div key={r.id} className="grid grid-cols-[1.4fr_.6fr_.7fr_.7fr] gap-1.5 px-4 py-1.5 text-sm border-t border-white/5">
+                  <span className="text-white/90 truncate">{r.name}</span>
+                  <span className="text-right tabular-nums text-white/70">{r.lateCount || '—'}</span>
+                  <span className="text-right tabular-nums text-amber-400">{r.lateMinutes || '—'}</span>
+                  <span className="text-right tabular-nums text-white/70">{r.earlyCount || '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {visibleGroups.length > 1 && (
             <div className="cn-glass rounded-2xl overflow-hidden border border-cyan-400/20">

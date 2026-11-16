@@ -276,7 +276,13 @@ export const ALERT_THRESHOLDS = { late: 3, earlyLeave: 3, absence: 3 }
 // manually: repeated lateness, repeated early departure, repeated absence.
 // Absence is derived from the company's OWN calendar (days someone actually
 // clocked in) rather than a hardcoded weekend, so it adapts to any work week.
-export function computeSmartAlerts(attendance, employees, shift) {
+//
+// `excuses` ({ leaves, holidays }) removes excused days from the absence count:
+// a day inside someone's leave, or a public holiday, is never an "absence".
+export function computeSmartAlerts(attendance, employees, shift, excuses = {}) {
+  const holidayDates = new Set((excuses.holidays || []).map(h => h.date))
+  const leavesByUser = {}
+  for (const l of excuses.leaves || []) (leavesByUser[l.employeeUserId] ||= []).push(l)
   const today = todayStr()
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - ALERT_LOOKBACK_DAYS)
   const cutoffStr = todayStr(cutoff)
@@ -310,7 +316,9 @@ export function computeSmartAlerts(attendance, employees, shift) {
     // Only count working days that occurred after this person joined, so brand-new hires
     // aren't flagged absent for days before they existed.
     const joined = e.createdAt ? todayStr(new Date(e.createdAt)) : cutoffStr
-    const absentDays = [...workingDays].filter(d => d >= joined && !b.daysPresent.has(d))
+    const myLeaves = leavesByUser[e.userId] || []
+    const absentDays = [...workingDays].filter(d => d >= joined && !b.daysPresent.has(d)
+      && !holidayDates.has(d) && !myLeaves.some(l => d >= l.startDate && d <= l.endDate))
 
     if (b.late.length >= ALERT_THRESHOLDS.late) {
       alerts.push({ userId: e.userId, name: b.name, type: 'late', count: b.late.length, lastDate: b.late.sort().at(-1) })

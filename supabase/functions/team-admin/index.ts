@@ -139,6 +139,9 @@ Deno.serve(async (req) => {
       const pin = password || randomPin()
       const { error } = await admin.auth.admin.updateUserById(userId, { password: pin })
       if (error) return json({ error: error.message }, 400)
+      // A fresh PIN also lifts any pin-login lockout on that account.
+      const { data: target } = await admin.from('employees').select('handle').eq('user_id', userId).maybeSingle()
+      if (target?.handle) await admin.from('login_attempts').delete().eq('handle', String(target.handle).toLowerCase())
       return json({ tempPassword: pin })
     }
 

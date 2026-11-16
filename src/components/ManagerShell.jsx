@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
-import { LayoutDashboard, ClipboardList, Users, Settings2, FileBarChart, LogOut, UserPlus, ShieldAlert, CalendarCheck } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Users, Settings2, FileBarChart, LogOut, UserPlus, ShieldAlert, CalendarCheck, CalendarOff } from 'lucide-react'
 import { auth } from '../lib/auth'
 import { team } from '../lib/team'
 import { EMBLEM } from '../store'
@@ -13,6 +13,7 @@ import Setup from '../pages/manager/Setup'
 import Reports from '../pages/manager/Reports'
 import Alerts from '../pages/manager/Alerts'
 import Today from '../pages/manager/Today'
+import Leaves from '../pages/manager/Leaves'
 
 const TABS = [
   { to: '/dashboard', label: 'الرئيسية', icon: LayoutDashboard },
@@ -20,6 +21,7 @@ const TABS = [
   { to: '/attendance', label: 'الحضور', icon: ClipboardList },
   { to: '/alerts', label: 'المراجعة', icon: ShieldAlert },
   { to: '/staff', label: 'الموظفون', icon: Users },
+  { to: '/leaves', label: 'الإجازات', icon: CalendarOff },
   { to: '/setup', label: 'الإعدادات', icon: Settings2 },
   { to: '/reports', label: 'التقارير', icon: FileBarChart },
 ]
@@ -100,6 +102,7 @@ export default function ManagerShell() {
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/staff" element={<Staff openRoster={openRoster} canManage={canManage} />} />
+              <Route path="/leaves" element={<Leaves />} />
               <Route path="/setup" element={<Setup openRoster={openRoster} />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

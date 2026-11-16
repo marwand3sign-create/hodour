@@ -72,9 +72,28 @@ export const team = {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error(OFFLINE_MSG)
     let data, error
     try {
-      ({ data, error } = await supabase.auth.signInWithPassword({ email: emailFor(handle), password }))
+      // Preferred path: the `pin-login` Edge Function counts wrong PINs per
+      // account and locks it after 5 misses. If it isn't deployed yet (404)
+      // fall back to the direct sign-in so login keeps working during rollout.
+      const fn = await supabase.functions.invoke('pin-login', { body: { handle, password } })
+      const status = fn.error?.context?.status
+      if (fn.error && status !== 404) {
+        let msg = ''
+        try { msg = (await fn.error.context.json())?.error || '' } catch { /* not json */ }
+        if (status) throw new Error(msg || 'اسم المستخدم أو الرقم السري غير صحيح')
+        throw fn.error // network-level failure
+      }
+      if (!fn.error) {
+        const { data: s, error: sErr } = await supabase.auth.setSession({ access_token: fn.data.access_token, refresh_token: fn.data.refresh_token })
+        if (sErr) throw sErr
+        return { user: s.user, role: s.user?.user_metadata?.role || 'employee' }
+      }
+      console.warn('pin-login function not deployed — PIN lockout is NOT active')
+      ;({ data, error } = await supabase.auth.signInWithPassword({ email: emailFor(handle), password }))
     } catch (e) {
-      throw new Error(isNetworkError(e) ? OFFLINE_MSG : 'تعذر تسجيل الدخول')
+      const offline = e?.name === 'FunctionsFetchError' || isNetworkError(e)
+      if (!offline && e?.message) throw e
+      throw new Error(offline ? OFFLINE_MSG : 'تعذر تسجيل الدخول')
     }
     if (error) throw new Error(isNetworkError(error) || error.status === 0 ? OFFLINE_MSG : 'اسم المستخدم أو الرقم السري غير صحيح')
     return { user: data.user, role: data.user?.user_metadata?.role || 'employee' }

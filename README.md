@@ -1,28 +1,40 @@
-# Hodour
+# Hodour (حضور)
 
-Exported from Whacka — this is **your app's code**: the components, pages and hooks
-you built, exactly as they run on Whacka. It's yours to keep.
+Arabic-first attendance system: face-recognition gate kiosk, phone clock-in with
+GPS, offline-first PWA, leave & holiday tracking, and payroll reports (PDF / Excel).
 
-## What's in here
+Stack: React 18 + Vite + Tailwind, Supabase (Postgres + Auth + Storage + Edge
+Functions), face-api / MediaPipe running in the browser.
 
-- `src/App.jsx`, `src/components/*`, `src/pages/*`, `src/hooks/*` — **your code**.
-  This is the real export, untouched.
-- `src/lib/*` — **stubs** for the Whacka client SDK (data, auth, storage, push,
-  social, …). The real implementation runs on the Whacka platform and is provided to
-  your app at runtime, so it isn't included here. The stubs keep your imports
-  resolving and show which Whacka APIs your code uses.
-- `src/main.jsx` — a stubbed entry point. The platform bootstrap (session, auth,
-  realtime, install, theming) runs on Whacka and is omitted.
-- `index.html`, `vite.config.js`, `package.json`, Tailwind/PostCSS config — the build setup.
+## Run locally
 
-## Does this run on its own?
+```bash
+npm install
+cp .env.example .env   # fill in the Supabase values
+npm run dev
+npm test               # unit tests (payroll + store helpers)
+npm run build
+```
 
-**No — and it isn't meant to.** Your app's data, auth, storage, AI, payments and push
-features are powered by Whacka's hosted backend, and the client SDK that talks to it is
-not part of this export. What you have here is a faithful, readable copy of the code you
-authored — for your records, for review, or to hand to a developer.
+## Backend setup
 
-## Ownership
+See [supabase/README.md](supabase/README.md): apply every migration in
+`supabase/migrations/` in order, deploy the Edge Functions (`team-admin`,
+`pin-login`, `cleanup-old-photos`) and bootstrap the owner account.
 
-Your application code is yours. The Whacka platform SDK and backend that make it run are
-Whacka's, and are not included in this export.
+## Layout
+
+- `src/pages/manager/*` — manager screens (dashboard, today, attendance, review, staff, leaves, setup, reports)
+- `src/pages/kiosk/Kiosk.jsx` — shared gate device (face identification)
+- `src/pages/employee/*` — employee clock-in/out and history
+- `src/lib/payroll.js` — pure payroll computation (tested in `payroll.test.js`)
+- `src/lib/offlineQueue.js` — offline clock-in/out queue replayed on reconnect
+- `src/store.js` — shift / wage / alert helpers
+- `supabase/` — migrations and Edge Functions
+
+## Notes
+
+- Originally exported from Whacka; `src/lib/*` now talks to Supabase directly.
+- Face data is biometric: a manager must confirm the worker's consent before
+  enrolling a face (recorded in `employees.face_consent_at`), and the data is
+  wiped when the employee is deleted.

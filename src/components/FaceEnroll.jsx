@@ -3,6 +3,7 @@ import { X, Loader2, ScanFace, CheckCircle2, AlertTriangle, RotateCcw } from 'lu
 import { loadModels, analyzeFrame, rank, meanDescriptor, distance, compact, LOOKALIKE_WARN, MATCH_MAX } from '../lib/faceId'
 import { db } from '../lib/db'
 import { storage } from '../lib/storage'
+import { auth } from '../lib/auth'
 
 // Each step asks for a slightly different pose so the kiosk recognises the
 // worker from more than one angle.
@@ -30,7 +31,8 @@ export default function FaceEnroll({ profile, name, others = [], onClose, onSave
   const lastRef = useRef(0)
   const runRef = useRef(true)
 
-  const [phase, setPhase] = useState('loading') // loading | capturing | review | saving | error
+  const [phase, setPhase] = useState(profile.faceConsentAt ? 'loading' : 'consent') // consent | loading | capturing | review | saving | error
+  const [agreed, setAgreed] = useState(false)
   const [hint, setHint] = useState('جارٍ تحميل نموذج التعرف على الوجه…')
   const [count, setCount] = useState(0)
   const [result, setResult] = useState(null) // { consistent, lookalikes:[{name,d}] }
@@ -38,7 +40,7 @@ export default function FaceEnroll({ profile, name, others = [], onClose, onSave
 
   useEffect(() => {
     runRef.current = true
-    start()
+    if (profile.faceConsentAt) start()
     return () => { runRef.current = false; stop() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -115,7 +117,15 @@ export default function FaceEnroll({ profile, name, others = [], onClose, onSave
           patch.referencePhoto = url
         } catch { /* photo is optional */ }
       }
-      await db.updateShared('employees', profile.id, patch)
+      // Record that the worker's written consent was confirmed (migration 0011).
+      // If that column isn't there yet, save the face data anyway.
+      const consent = profile.faceConsentAt ? {} : { faceConsentAt: new Date().toISOString(), faceConsentBy: auth.getCurrentUser()?.id || null }
+      try {
+        await db.updateShared('employees', profile.id, { ...patch, ...consent })
+      } catch (e) {
+        if (!/face_consent/i.test(e.message || '')) throw e
+        await db.updateShared('employees', profile.id, patch)
+      }
       onSaved?.()
       onClose()
     } catch (e) {
@@ -141,6 +151,22 @@ export default function FaceEnroll({ profile, name, others = [], onClose, onSave
           </div>
           <button onClick={onClose} className="text-white/50 hover:text-white p-1"><X size={18} /></button>
         </div>
+
+        {phase === 'consent' && (
+          <div className="space-y-3 text-sm">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-white/75 leading-relaxed space-y-1.5">
+              <div className="font-semibold text-white">موافقة على استخدام البيانات الحيوية</div>
+              <p>سيتم تحويل وجه الموظف إلى قيم رقمية (بصمة وجه) وتخزينها مع صورة مرجعية، ولا تُستخدم إلا لإثبات الحضور والانصراف.</p>
+              <p>تُحذف هذه البيانات تلقائيًا عند حذف الموظف، وله طلب حذفها أو إعادة تسجيلها في أي وقت.</p>
+            </div>
+            <label className="flex items-start gap-2 text-white/85 cursor-pointer">
+              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-1" />
+              أؤكد أن <b>{name}</b> وافق/ت على ذلك موافقة خطية أو شفهية موثّقة.
+            </label>
+            <button disabled={!agreed} onClick={() => { setPhase('loading'); start() }}
+              className="w-full py-2.5 rounded-xl bg-cyan-400 text-black font-semibold disabled:opacity-40">متابعة إلى التقاط الوجه</button>
+          </div>
+        )}
 
         {(phase === 'loading' || phase === 'capturing') && (
           <>

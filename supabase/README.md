@@ -3,13 +3,28 @@
 ## 1. Create the project & apply the schema
 
 1. Create (or reuse) a Supabase project.
-2. Run `supabase/migrations/0001_hodour_schema.sql` against it — either paste it into the
-   SQL editor in the Supabase Dashboard, or, with the Supabase CLI linked to your project:
+2. Apply **all** migrations in `supabase/migrations/` in order (0001 → latest) — with the
+   Supabase CLI linked to your project:
    ```
    npx supabase db push
    ```
+   or paste each file into the SQL editor in order. Migration 0010 uses `pg_cron`
+   (auto clock-out); 0011 adds leaves, holidays, biometric-consent and PIN-lockout tables.
 
-## 2. Deploy the `team-admin` Edge Function
+## 2. Deploy the Edge Functions
+
+```
+npx supabase functions deploy pin-login        # PIN sign-in with lockout (5 wrong PINs → 15 min)
+npx supabase functions deploy cleanup-old-photos
+```
+`pin-login` only protects clients that sign in through it. Also set sensible Auth rate
+limits in Dashboard → Authentication → Rate Limits. Until it is deployed the app falls
+back to direct sign-in (lockout inactive) and logs a console warning.
+
+Schedule `cleanup-old-photos` monthly (Dashboard → Edge Functions → cleanup-old-photos → Cron) —
+it deletes attendance snapshots older than 60 days, never the enrolment reference photo.
+
+### `team-admin`
 
 Employee account creation/listing/reset/enable/disable need the service-role key, so they
 run server-side:
